@@ -87,11 +87,125 @@ class TileKind(IntEnum):
     SIZE = 35
 
     @classmethod
+    def next_tile(      # この牌がドラ表示牌の場合のドラ
+        cls,
+        kind    # TileKind
+    ):
+        if cls.M1 <= kind < cls.M9:
+            return cls(kind + 1)
+        elif kind == cls.M9:
+            return cls.M1
+        elif cls.P1 <= kind < cls.P9:
+            return cls(kind + 1)
+        elif kind == cls.P9:
+            return cls.P1
+        elif cls.S1 <= kind < cls.S9:
+            return cls(kind + 1)
+        elif kind == cls.S9:
+            return cls.S1
+        elif cls.EAST <= kind < cls.NORTH:
+            return cls(kind + 1)
+        elif kind == cls.NORTH:
+            return cls.EAST
+        elif cls.WHITE <= kind < cls.RED:
+            return cls(kind + 1)
+        elif kind == cls.RED:
+            return cls.WHITE
+        else:
+            raise Exception(f"unexpected prev tile kind: {kind}")
+        
+
+    @classmethod
     def from_mjx(
         cls,
         tile_type # MjxTileType
     ):
         return cls(tile_type)
+
+    @classmethod
+    def from_mjai(      # 手牌用
+        cls,
+        tile_str: str
+    ):
+        match tile_str:
+            case "1m": return cls.M1
+            case "2m": return cls.M2
+            case "3m": return cls.M3
+            case "4m": return cls.M4
+            case "5m" | "5mr": return cls.M5
+            case "6m": return cls.M6
+            case "7m": return cls.M7
+            case "8m": return cls.M8
+            case "9m": return cls.M9
+            case "1p": return cls.P1
+            case "2p": return cls.P2
+            case "3p": return cls.P3
+            case "4p": return cls.P4
+            case "5p" | "5pr": return cls.P5
+            case "6p": return cls.P6
+            case "7p": return cls.P7
+            case "8p": return cls.P8
+            case "9p": return cls.P9
+            case "1s": return cls.S1
+            case "2s": return cls.S2
+            case "3s": return cls.S3
+            case "4s": return cls.S4
+            case "5s" | "5sr": return cls.S5
+            case "6s": return cls.S6
+            case "7s": return cls.S7
+            case "8s": return cls.S8
+            case "9s": return cls.S9
+            case "E": return cls.EAST
+            case "S": return cls.SOUTH
+            case "W": return cls.WEST
+            case "N": return cls.NORTH
+            case "P": return cls.WHITE
+            case "F": return cls.GREEN
+            case "C": return cls.RED
+            case "?": return cls.UNKNOWN
+            case _: raise Exception(f"unknown tile str: {tile_str}")
+
+    @classmethod
+    def from_mjai_2(    # 副露用
+        cls,
+        tile_str: str
+    ):
+        match tile_str:
+            case "1m": return cls.M1
+            case "2m": return cls.M2
+            case "3m": return cls.M3
+            case "4m": return cls.M4
+            case "5m" | "0m": return cls.M5
+            case "6m": return cls.M6
+            case "7m": return cls.M7
+            case "8m": return cls.M8
+            case "9m": return cls.M9
+            case "1p": return cls.P1
+            case "2p": return cls.P2
+            case "3p": return cls.P3
+            case "4p": return cls.P4
+            case "5p" | "0p": return cls.P5
+            case "6p": return cls.P6
+            case "7p": return cls.P7
+            case "8p": return cls.P8
+            case "9p": return cls.P9
+            case "1s": return cls.S1
+            case "2s": return cls.S2
+            case "3s": return cls.S3
+            case "4s": return cls.S4
+            case "5s" | "0s": return cls.S5
+            case "6s": return cls.S6
+            case "7s": return cls.S7
+            case "8s": return cls.S8
+            case "9s": return cls.S9
+            case "1z": return cls.EAST
+            case "2z": return cls.SOUTH
+            case "3z": return cls.WEST
+            case "4z": return cls.NORTH
+            case "5z": return cls.WHITE
+            case "6z": return cls.GREEN
+            case "7z": return cls.RED
+            case _: raise Exception(f"unknown tile str: {tile_str}")
 
 @unique
 class ChiKind(IntEnum):
@@ -180,7 +294,7 @@ class ActionKind(IntEnum):
     NO = 10         # キャンセル（鳴かない、上がらない）
     SIZE = 11
 
-class Tile():
+class Tile:
     def __init__(
         self,
         tile_kind: TileKind,
@@ -196,7 +310,33 @@ class Tile():
     ):
         tile_kind = TileKind.from_mjx(tile.type())
         red = tile.is_red()
-        return Tile(tile_kind, red)
+        return cls(tile_kind, red)
+
+    @classmethod
+    def from_mjai(
+        cls,
+        tile_str: str
+    ):
+        tile_kind = TileKind.from_mjai(tile_str)
+        red = False
+        if len(tile_str) == 3 and tile_str[2] == "r":
+            red = True
+        return cls(tile_kind, red)
+    
+    def to_mjai(
+        self,
+        ignore_red: bool = False
+    ):
+        mjai_strings = [
+            "1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m", "9m",
+            "1p", "2p", "3p", "4p", "5p", "6p", "7p", "8p", "9p",
+            "1s", "2s", "3s", "4s", "5s", "6s", "7s", "8s", "9s",
+            "E", "S", "W", "N", "P", "F", "C",
+        ]
+        name = mjai_strings[self.tile_kind]
+        if self.red and not ignore_red:
+            name += "r"
+        return name
 
     def __repr__(self):
         if self.tile_kind == TileKind.UNKNOWN:
@@ -237,15 +377,64 @@ class Exposed:  #   ポン、チー、カン
 
         if tile_num == 4 and kind_num == 1:     # カン
             if relation == Relation.ME:             # 暗槓
-                return Exposed(relation, ExposedKind.KAN_CLOSE, kan_kind=stolen.tile_kind)
+                return cls(relation, ExposedKind.KAN_CLOSE, kan_kind=stolen.tile_kind)
             elif relation != Relation.ME:           # 大明槓、加槓
-                return Exposed(relation, ExposedKind.KAN_OPEN, kan_kind=stolen.tile_kind) 
+                return cls(relation, ExposedKind.KAN_OPEN, kan_kind=stolen.tile_kind) 
         elif tile_num == 3 and kind_num == 1:   # ポン
-            return Exposed(relation, ExposedKind.PON, pon_kind=stolen.tile_kind)
+            return cls(relation, ExposedKind.PON, pon_kind=stolen.tile_kind)
         elif tile_num == 3 and kind_num == 3:   # チー
-            return Exposed(relation, ExposedKind.CHI, chi_kind=ChiKind.from_tilekinds(kind_list[0], kind_list[1], kind_list[2]))
+            return cls(relation, ExposedKind.CHI, chi_kind=ChiKind.from_tilekinds(kind_list[0], kind_list[1], kind_list[2]))
 
         raise Exception(f"relation: {relation.name}, tiles: {tiles}, stolen: {stolen}")
+
+    @classmethod
+    def from_str(
+        cls,
+        exposed_str: str
+    ):
+        if exposed_str[0] == "p":                               # ポン
+            tile_kind = TileKind.from_mjai_2(exposed_str[1:3])
+            relation = Relation(int(exposed_str[3]))
+            return cls(relation, ExposedKind.PON, pon_kind=tile_kind)
+        elif exposed_str[0] == "k":                             # カン
+            tile_kind = TileKind.from_mjai_2(exposed_str[1:3])
+            if len(exposed_str) > 4 and exposed_str[3] != "r":  # 大明槓
+                relation = Relation(int(exposed_str[3]))
+                return cls(relation, ExposedKind.KAN_OPEN, kan_kind=tile_kind)
+            else:                                               # 暗槓
+                return cls(Relation.ME, ExposedKind.KAN_CLOSE, kan_kind=tile_kind)
+        elif exposed_str[0] == "s":                             # 加槓
+            tile_kind = TileKind.from_mjai_2(exposed_str[1:3])
+            relation = Relation(int(exposed_str[3]))
+            return cls(relation, ExposedKind.KAN_OPEN, kan_kind=tile_kind)
+        else:                                                   # チー
+            color = exposed_str[3]
+            chi_left = int(exposed_str[0:3].replace("0", "5")[0])
+            if color == "m":
+                return cls(Relation.KAMI, ExposedKind.CHI, chi_kind=ChiKind(ChiKind.M123 + chi_left - 1))
+            elif color == "p":
+                return cls(Relation.KAMI, ExposedKind.CHI, chi_kind=ChiKind(ChiKind.P123 + chi_left - 1))
+            elif color == "s":
+                return cls(Relation.KAMI, ExposedKind.CHI, chi_kind=ChiKind(ChiKind.S123 + chi_left - 1))
+            else:
+                raise Exception(f"unexpected exposed: {exposed_str}")
+
+    def get_tilekinds(self):
+        if self.exposed_kind == ExposedKind.PON:
+            return [self.pon_kind for _ in range(3)]
+        elif self.exposed_kind == ExposedKind.KAN_CLOSE or self.exposed_kind == ExposedKind.KAN_OPEN:
+            return [self.kan_kind for _ in range(4)]
+        elif self.exposed_kind == ExposedKind.CHI:
+            left = None
+            if ChiKind.M123 <= self.chi_kind <= ChiKind.M789:
+                left = self.chi_kind + TileKind.M1 - ChiKind.M123
+            elif ChiKind.P123 <= self.chi_kind <= ChiKind.P789:
+                left = self.chi_kind + TileKind.P1 - ChiKind.P123
+            elif ChiKind.S123 <= self.chi_kind <= ChiKind.S789:
+                left = self.chi_kind + TileKind.S1 - ChiKind.S123
+            return [TileKind(left), TileKind(left+1), TileKind(left+2)]
+            
+        return None
 
     def __repr__(self):
         if self.exposed_kind == ExposedKind.PON:
@@ -255,7 +444,7 @@ class Exposed:  #   ポン、チー、カン
         elif self.exposed_kind == ExposedKind.KAN_CLOSE:
             return f"KAN_CLOSE({self.kan_kind.name})"
         elif self.exposed_kind == ExposedKind.KAN_OPEN:
-            return f"KAN_OPEN({self.kan_kind.name})"
+            return f"KAN_OPEN({self.kan_kind.name}) from {self.relation.name}"
         return "unknown"
 
     @classmethod
@@ -297,8 +486,55 @@ class Hand:
         
         return cls(closed, exposed)
 
+    def to_34_array(
+        self
+    ):
+        # シャンテン数ライブラリ用なのでclosedのみ
+        arr = [0 for _ in range(34)]
+        for tile in self.closed:
+            arr[tile.tile_kind] += 1
+        return arr
+
     def __repr__(self):
         return f"{self.closed}, {self.exposed}"
+
+    @classmethod
+    def from_mjai(
+        cls,
+        hand_str: str
+    ):
+        def split(hand_str):
+            splited = [part.strip(")") for part in hand_str.split("(")]
+            return splited[0], splited[1:]
+
+        def parse_closed(closed_str):
+            closed = []
+            color = None
+            for c in reversed(closed_str):
+                if c == "m" or c == "p" or c == "s" or c == "z":
+                    color = c
+                else:
+                    number = int(c)
+                    tile_kind = None
+                    red = False
+                    if number == 0:
+                        red = True
+                        number = 5
+                    if color == "m":
+                        tile_kind = TileKind(TileKind.M1 + number - 1)
+                    elif color == "p":
+                        tile_kind = TileKind(TileKind.P1 + number - 1)
+                    elif color == "s":
+                        tile_kind = TileKind(TileKind.S1 + number - 1)
+                    elif color == "z":
+                        tile_kind = TileKind(TileKind.EAST + number - 1)
+                    else:
+                        raise Exception(f"unexpected color: {color}")
+                    closed.append(Tile(tile_kind, red))
+            return list(reversed(closed))
+
+        closed_str, exposed_strs = split(hand_str)
+        return cls(parse_closed(closed_str), [Exposed.from_str(exposed_str) for exposed_str in exposed_strs])
 
 class River:
     def __init__(
@@ -360,12 +596,12 @@ class Board:
         observation # MjxObservation
     ):
         field_wind = Wind(observation.round() % 4)
-
         my_wind = Wind(observation.who())
 
         mjx_hand = observation.curr_hand()
         my_hand = Hand.from_mjx(mjx_hand)
         shanten = mjx_hand.shanten_number()
+
         effective_discard = [TileKind.from_mjx(entry) for entry in mjx_hand.effective_discard_types()]
 
         riichi = [False, False, False, False]
@@ -549,11 +785,14 @@ class Action:
             instance.kan_kind = steal.tile_kind
             
             exp_num = len(expose)
+            # relation = Relation(kan.steal_from())
+            # hand_num = len(board.players[Relation.ME].hand.closed) % 3
+            # print(f"steal: {steal}, expose: {expose}, hand_num: {hand_num}, relation: {relation.name}")
             if exp_num == 3:
                 instance.action_kind = ActionKind.KAN_OPEN
             elif exp_num == 4:
                 instance.action_kind = ActionKind.KAN_CLOSE
-            elif exp_num == 1:
+            elif exp_num == 1:  # TODO: これ違ってて、大明槓と加槓は両方とも(steal, exp)の形が同じ（1, 3の形）
                 instance.action_kind = ActionKind.KAN_ADD
         elif action_id == 175:  # ツモ
             instance.action_kind = ActionKind.TSUMO

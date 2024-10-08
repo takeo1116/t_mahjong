@@ -134,7 +134,11 @@ class HandFeature:
         my_hand = my_player.hand
         exist_tiles = [False for _ in range(TileKind.SIZE)]
 
-        if len(my_hand.exposed) == 0:
+        menzen = True
+        for exposed in my_hand.exposed:
+            if exposed.exposed_kind != ExposedKind.KAN_CLOSE:
+                menzen = False
+        if menzen:
             v.add(offset+cls.MENZEN)
         PhaseFeature.add(v, offset+cls.PHASE, my_player)
         ExposedFeature.add(v, offset+cls.EXPOSED, my_hand)

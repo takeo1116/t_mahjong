@@ -9,7 +9,7 @@ import mjx
 from learn import LearningConstants
 from actor import ShantenActor, Actor
 from model import Model
-from feature import BoardFeature, HandFeature, ActionFeature
+from feature import BoardFeature, ActionFeature
 
 from pympler import tracker
 
@@ -58,8 +58,9 @@ class SingleGame:
                     self.agents[player_id].end_round(final - init, yaku)
 
                 if self.env.done(done_type="game"): # ゲーム終了時
-                    for player_id, final in zip(player_ids, final_scores):
-                        self.agents[player_id].end_game(final)
+                    ranks = [sorted(final_scores, reverse=True).index(x) + 1 for x in final_scores]
+                    for player_id, final, rank in zip(player_ids, final_scores, ranks, strict=True):
+                        self.agents[player_id].end_game(final, rank)
 
     def visualize_one_round(
         self,
@@ -91,7 +92,7 @@ class SingleGame:
                 break
             self.run()
             if log_time != None and cnt == 0:
-                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()]}
+                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()], "ranks": [agent.get_rank() for agent in self.agents.values()]}
                 print(log_dict, flush=True)
             cnt += 1
 

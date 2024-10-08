@@ -13,7 +13,7 @@ from mjx.observation import Observation as MjxObservation
 from mjx.agents import ShantenAgent as MjxShantenAgent
 
 from board import Board, Action
-from feature import FeatureVector, BoardFeature, HandFeature, ActionFeature
+from feature import FeatureVector, BoardFeature, ActionFeature
 from model import Model
 
 class TrainingData:
@@ -228,46 +228,8 @@ class Trainer:
     def calc_reward(
         result: int
     ):
-        if result == 0:  # 点数移動なし
-            return -0.1
-        elif result > 0: # 収支プラス
-            if result >= 48000:
-                return 1.0
-            elif result >= 32000:
-                return 0.95
-            elif result >= 24000:
-                return 0.9
-            elif result >= 16000:
-                return 0.85
-            elif result >= 12000:
-                return 0.8
-            elif result >= 8000:
-                return 0.7
-            elif result >= 4000:
-                return 0.6
-            elif result >= 2000:
-                return 0.5
-            else:
-                return 0.4
-        else:           # 収支マイナス
-            if result <= -48000:
-                return -1.0
-            elif result <= -32000:
-                return -0.95
-            elif result <= -24000:
-                return -0.9
-            elif result <= -16000:
-                return -0.8
-            elif result <= -12000:
-                return -0.7
-            elif result <= -8000:
-                return -0.6
-            elif result <= -4000:
-                return -0.5
-            elif result <= -2000:
-                return -0.3
-            else:
-                return -0.2
+        reward = result / 48000
+        return reward
 
 class Evaluator:
     MAX_BATTLE = 100
@@ -275,21 +237,25 @@ class Evaluator:
     def __init__(self):
         self.games = deque()
         self.score_sum = 0
+        self.rank_sum = 0
 
     def add(
         self,
-        score: int
+        score: int,
+        rank: int
     ):
-        self.games.append(score)
+        self.games.append((score, rank))
         self.score_sum += score
+        self.rank_sum += rank
         if len(self.games) > self.MAX_BATTLE:
-            popped = self.games.popleft()
-            self.score_sum -= popped
+            score_popped, rank_popped = self.games.popleft()
+            self.score_sum -= score_popped
+            self.rank_sum -= rank_popped
 
     def get_moving_average(self):
         if len(self.games) == 0:
-            return 0.0
-        return self.score_sum / len(self.games)
+            return 0.0, 0.0
+        return self.score_sum / len(self.games), self.rank_sum / len(self.games)
 
 class Actor(MjxAgent):
     def __init__(
@@ -366,14 +332,22 @@ class Actor(MjxAgent):
 
     def end_game(
         self,
-        final_score: int
+        final_score: int,
+        final_rank: int
     ):
-        self.evaluator.add(final_score)
+        self.evaluator.add(final_score, final_rank)
 
     def get_score(
         self
     ):
-        return self.evaluator.get_moving_average()
+        score, _ = self.evaluator.get_moving_average()
+        return score
+
+    def get_rank(
+        self
+    ):
+        _, rank = self.evaluator.get_moving_average()
+        return rank
 
     def _infer(
         self,
