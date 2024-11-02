@@ -8,7 +8,7 @@ from feature import BoardFeature, ActionFeature
 
 
 model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
-model.load_state_dict(torch.load("storage/model.pth"))
+model.load_state_dict(torch.load("storage/model_0_861390000.pth"))
 
 temperature = 0.01
 
