@@ -4,11 +4,11 @@ from battle import SingleGame
 from learn import LearningConstants
 from actor import ShantenActor, Actor
 from model import Model
-from feature import BoardFeature, HandFeature, ActionFeature
+from feature import BoardFeature, ActionFeature
 
 
 model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
-model.load_state_dict(torch.load("learn/model_0_23245000.pth"))
+model.load_state_dict(torch.load("storage/model_0_861390000.pth"))
 
 temperature = 0.01
 
