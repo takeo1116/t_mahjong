@@ -113,7 +113,8 @@ class HandFeature:
     PHASE = MENZEN + 1
     EXPOSED = PHASE + PhaseFeature.SIZE                             # 副露
     CLOSED_TILES = EXPOSED + ExposedFeature.SIZE                    # 手牌の種類と枚数
-    CLOSED_CHI = CLOSED_TILES + TileKind.SIZE * 4                   # 手牌にある順子
+    EFFECTIVE_TILES = CLOSED_TILES + TileKind.SIZE * 4              # シャンテン数が進む牌
+    CLOSED_CHI = EFFECTIVE_TILES + TileKind.SIZE                    # 手牌にある順子
     CLOSED_OUTSIDE_WAIT = CLOSED_CHI + ChiKind.SIZE                 # 手牌にある塔子
     CLOSED_INSIDE_WAIT = CLOSED_OUTSIDE_WAIT + SerialPairKind.SIZE  # 手牌にある嵌張
     EXIST_MAN = CLOSED_INSIDE_WAIT + ChiKind.SIZE                   # 手牌と副露に萬子があるか
@@ -129,8 +130,9 @@ class HandFeature:
         cls,
         v: FeatureVector,
         offset: int,
-        my_player: Player
+        board: Board
     ):
+        my_player = board.players[Relation.ME]
         my_hand = my_player.hand
         exist_tiles = [False for _ in range(TileKind.SIZE)]
 
@@ -147,6 +149,9 @@ class HandFeature:
             exist_tiles[kind] = True
             for i in range(cnt):
                 v.add(offset+cls.CLOSED_TILES+kind*4+i)
+        
+        for effective_idx in board.effective_discard:
+            v.add(offset+cls.EFFECTIVE_TILES+effective_idx)
 
         # 順子と嵌張
         for tile_start, tile_end, chi_start in [(TileKind.M2, TileKind.M8, ChiKind.M123), (TileKind.P2, TileKind.P8, ChiKind.P123), (TileKind.S2, TileKind.S8, ChiKind.S123)]:
@@ -214,12 +219,13 @@ class MyPlayerFeature:
         cls,
         v: FeatureVector,
         offset: int,
-        player: Player
+        board: Board
     ):
+        player = board.players[Relation.ME]
         v.add(offset+cls.WIND+player.wind)
         if player.riichi:
             v.add(offset+cls.RIICHI)
-        HandFeature.add(v, cls.HAND, player)
+        HandFeature.add(v, cls.HAND, board)
         RiverFeature.add(v, offset+cls.RIVER, player.river)
 
 class OpponentPlayerFeature:
@@ -262,7 +268,7 @@ class BoardFeature:
         v.add(cls.WIND+board.wind)
         ShantenFeature.add(v, cls.SHANTEN, board.shanten)
         PhaseFeature.add(v, cls.PHASE, board.players[Relation.ME])
-        MyPlayerFeature.add(v, cls.MY_PLAYER, board.players[Relation.ME])
+        MyPlayerFeature.add(v, cls.MY_PLAYER, board)
         OpponentPlayerFeature.add(v, cls.SHIMO_PLAYER, board.players[Relation.SHIMO])
         OpponentPlayerFeature.add(v, cls.TOIMEN_PLAYER, board.players[Relation.TOIMEN])
         OpponentPlayerFeature.add(v, cls.KAMI_PLAYER, board.players[Relation.KAMI])

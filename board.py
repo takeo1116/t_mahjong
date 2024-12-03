@@ -707,6 +707,15 @@ class Action:
             return "unknown action"
     
     @classmethod
+    def no(
+        cls
+    ):
+        # 内部用
+        instance = cls()
+        instance.action_kind = ActionKind.NO
+        return instance
+    
+    @classmethod
     def from_mjx(
         cls,
         action, # MjxAction

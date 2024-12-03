@@ -8,12 +8,12 @@ from feature import BoardFeature, ActionFeature
 
 
 model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
-model.load_state_dict(torch.load("storage/model_0_861390000.pth"))
+# model.load_state_dict(torch.load("storage/model_0_861390000.pth"))
 
 temperature = 0.01
 
 agents = [
-    Actor(model),
+    ShantenActor(model),
     Actor(model),
     Actor(model),
     Actor(model),
@@ -27,4 +27,7 @@ agents = [
 # ]
 
 game = SingleGame(agents)
-game.visualize_one_round(None)
+# game.visualize_one_round(None)
+game.run()
+
+print([(data.data_type, data.value_label) for data in agents[0].trainer.episodes[0].data])
