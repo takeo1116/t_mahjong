@@ -11,8 +11,6 @@ from actor import ShantenActor, Actor
 from model import Model
 from feature import BoardFeature, ActionFeature
 
-from pympler import tracker
-
 class SingleGame:
     def __init__(
         self,

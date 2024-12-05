@@ -13,7 +13,7 @@ from mjx.action import Action as MjxAction
 from mjx.observation import Observation as MjxObservation
 from mjx.agents import ShantenAgent as MjxShantenAgent
 
-from board import Board, Action, ActionKind, TileKind
+from board import Board, Action, ActionKind, TileKind, Tile
 from feature import FeatureVector, BoardFeature, ActionFeature
 from model import Model
 
@@ -28,6 +28,7 @@ class DiscardTrainingData:
         board_vector: FeatureVector,
         value_inferred: float,
         discard_index: int,
+        illegal_indexes: list[int],
         value_label: float = None,
         yaku_label: list[bool] = None,
         policy_label: float = None,
@@ -36,6 +37,7 @@ class DiscardTrainingData:
         self.board_vector = board_vector
         self.value_inferred = value_inferred
         self.discard_index = discard_index
+        self.illegal_indexes = illegal_indexes
         self.value_label = value_label
         self.yaku_label = yaku_label
         self.policy_label = policy_label
@@ -46,6 +48,9 @@ class DiscardTrainingData:
             b += struct.pack("H", idx)
         b += struct.pack("d", self.value_inferred)
         b += struct.pack("H", self.discard_index)
+        b += struct.pack("H", len(self.illegal_indexes))
+        for idx in self.illegal_indexes:
+            b += struct.pack("H", idx)
         b += struct.pack("d", self.value_label)
         b += struct.pack("H", len(self.yaku_label))
         for lab in self.yaku_label:
@@ -62,11 +67,13 @@ class DiscardTrainingData:
         board_vector = FeatureVector([struct.unpack("H", buffer.read(2))[0] for _ in range(len_bv)])
         value_inferred, = struct.unpack("d", buffer.read(8))
         discard_index, = struct.unpack("H", buffer.read(2))
+        len_ii, = struct.unpack("H", buffer.read(2))
+        illegal_indexes = [struct.unpack("H", buffer.read(2))[0] for _ in range(len_ii)]
         value_label, = struct.unpack("d", buffer.read(8))
         len_yl, = struct.unpack("H", buffer.read(2))
         yaku_label = [struct.unpack("?", buffer.read(1))[0] for _ in range(len_yl)]
         policy_label, = struct.unpack("d", buffer.read(8))
-        return cls(board_vector, value_inferred, discard_index, value_label, yaku_label, policy_label)
+        return cls(board_vector, value_inferred, discard_index, illegal_indexes, value_label, yaku_label, policy_label)
 
 class OptionalTrainingData:
     def __init__(
@@ -255,11 +262,13 @@ class DiscardDataset(Dataset):
     
     def make_labels(self):
         value_labels, yaku_labels, discard_labels = [], [], []
+        illegal_labels = []
         for entry in self.data:
             value_labels.append(entry.value_label)
             yaku_labels.append(self.make_yaku_labels([1 if flag else 0 for flag in entry.yaku_label]))
-            discard_labels.append([entry.policy_label if idx == entry.discard_index else 0.0 for idx in range(34)])
-        return value_labels, yaku_labels, discard_labels
+            discard_labels.append([(entry.policy_label if entry.policy_label > 0 else entry.policy_label / 10) if idx == entry.discard_index else 0.0 for idx in range(34)])
+            illegal_labels.append([1.0 if idx in entry.illegal_indexes else 0.0 for idx in range(34)])
+        return value_labels, yaku_labels, discard_labels, illegal_labels
 
     def split(
         self,
@@ -398,6 +407,14 @@ class DiscardInferred:
         self.discard = discard
         self.selected_idx = None    # self.select()で最後に選択された牌のindex
 
+    def get_illegal_indexes(
+        self
+    ):
+        # 手牌にない牌のindexのリストを返す
+        tiles = [Tile.from_mjx(mjx_action.tile()) for mjx_action in self.mjx_actions]
+        legal = [tile.tile_kind for tile in tiles]
+        return [idx for idx in range(34) if idx not in legal]
+
     def set_selected(
         self,
         action: Action
@@ -469,7 +486,7 @@ class Trainer:
     ):
         if inferred.selected_idx is None:
             raise Exception("selected_idx is None")
-        training_data = DiscardTrainingData(inferred.base_inferred.board_vector, inferred.base_inferred.value, inferred.selected_idx)
+        training_data = DiscardTrainingData(inferred.base_inferred.board_vector, inferred.base_inferred.value, inferred.selected_idx, inferred.get_illegal_indexes())
         self.current_episode.add(training_data)
     
     def add_optional(
@@ -779,18 +796,3 @@ class ShantenActor(Actor):
         discard_inferred.set_selected(selected)
         self.trainer.add_discard(discard_inferred)
         return mjx_selected
-
-    # def _inner_act_old(
-    #     self,
-    #     observation: MjxObservation
-    #     ) -> MjxAction:
-
-    #     selected = self.shanten_agent.act(observation)
-    #     inferred = self._infer(observation)
-
-    #     for entry in inferred:
-    #         if entry.action == selected:
-    #             self.trainer.add(entry)
-    #             return entry.action
-
-    #     raise Exception("selected action not found")

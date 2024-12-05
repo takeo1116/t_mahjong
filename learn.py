@@ -132,7 +132,7 @@ def main():
             fulldataset = DiscardDataset.from_bytes(b)
             datasets = fulldataset.split(LearningConstants.BATCH_SIZE)
 
-            value_loss_sum, yaku_loss_sum, discard_loss_sum = 0.0, 0.0, 0.0
+            value_loss_sum, yaku_loss_sum, discard_loss_sum, illegal_loss_sum = 0.0, 0.0, 0.0, 0.0
             loss_sum, loss_count = 0.0, 0
 
             for data in datasets:
@@ -141,11 +141,12 @@ def main():
                 board_indexes, board_offsets = data.make_inputs()
                 board_indexes = torch.LongTensor(board_indexes).to(device)
                 board_offsets = torch.LongTensor(board_offsets).to(device)
-                value_labels, yaku_labels, discard_labels = data.make_labels()
+                value_labels, yaku_labels, discard_labels, illegal_labels = data.make_labels()
 
                 value_labels = torch.FloatTensor([[v] for v in value_labels]).to(device)
                 yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(device)
-                discard_labels = torch.FloatTensor([p for p in discard_labels]).to(device)
+                discard_labels = torch.FloatTensor([dl for dl in discard_labels]).to(device)
+                illegal_labels = torch.FloatTensor([il for il in illegal_labels]).to(device)
 
                 value, yaku, b_to_d, _ = model.forward_base(board_indexes, board_offsets)
                 discard = model.forward_discard(b_to_d)
@@ -153,22 +154,25 @@ def main():
                 value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
                 yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
                 discard_loss = torch.nn.functional.cross_entropy(discard, discard_labels, reduction="sum")
+                illegal_loss = torch.nn.functional.cross_entropy(discard, illegal_labels, reduction="sum")
 
                 value_loss /= 1.0
                 yaku_loss /= 3.0
                 discard_loss /= 30.0
+                illegal_loss /= -3000.0
                 value_loss_sum += value_loss
                 yaku_loss_sum += yaku_loss
                 discard_loss_sum += discard_loss
+                illegal_loss_sum += illegal_loss
 
-                loss = value_loss + yaku_loss + discard_loss
+                loss = value_loss + yaku_loss + discard_loss + illegal_loss
                 loss_count += len(data)
                 learned_discard_data += len(data)
 
                 loss.backward()
                 optimizer.step()
 
-            print(f"DISCARD:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, discard_loss: {discard_loss_sum / loss_count}, lr: {lr}", flush=True)
+            print(f"DISCARD:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, discard_loss: {discard_loss_sum / loss_count}, illegal_loss: {illegal_loss_sum / loss_count}, lr: {lr}", flush=True)
 
             for file in files:
                 r = random.random()
