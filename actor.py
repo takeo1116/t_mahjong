@@ -450,6 +450,7 @@ class DiscardInferred:
             self.selected_idx = idx
             return mjx_action
 
+        # 温度が設定されていればsoftmaxで返す
         x = np.array(probs)
         exp_x = np.exp(x / temperature)
         p = exp_x / np.sum(exp_x)
@@ -593,6 +594,18 @@ class Actor(MjxAgent):
         self.model = model
         self.model.eval()
 
+    def softmax(
+        self,
+        inferred: list[OptionalInferred]
+    ):
+        if self.temperature == None:
+            raise Exception("temperature is None")
+        else:
+            x = np.array([entry.policy for entry in inferred])
+            exp_x = np.exp(x / self.temperature)
+            p = exp_x / np.sum(exp_x)
+            return p.tolist()
+
     def act(
         self,
         observation: MjxObservation
@@ -696,8 +709,14 @@ class Actor(MjxAgent):
         # 打牌以外を推論する
         if len(optional_actions) > 0:
             optional_inferred = sorted(self._infer_optional(base_inferred, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
+            
+            optional = None
+            if self.temperature == None:    # 最善手を選ぶ
+                optional = optional_inferred[0]
+            else:
+                probabilities = self.softmax(optional_inferred)
+                optional = random.choices(optional_inferred, k=1, weights=probabilities)[0]
 
-            optional = optional_inferred[0]
             if optional.mjx_action is None:
                 # NOかつdiscardに進む場合
                 if not can_discard:
@@ -710,7 +729,7 @@ class Actor(MjxAgent):
 
         # 打牌を推論する
         discard_inferred = self._infer_discard(base_inferred, discard_actions)
-        mjx_action = discard_inferred.select()
+        mjx_action = discard_inferred.select(self.temperature)
         self.trainer.add_discard(discard_inferred)
         return mjx_action
 
