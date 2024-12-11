@@ -86,8 +86,7 @@ def main():
                 yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(device)
                 policy_labels = torch.FloatTensor([[p] for p in policy_labels]).to(device)
 
-                value, yaku, _, b_to_p = model.forward_base(board_indexes, board_offsets)
-                policy = model.forward_optional(action_indexes, action_offsets, b_to_p)
+                value, yaku, policy = model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
 
                 value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
                 yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
@@ -148,8 +147,7 @@ def main():
                 discard_labels = torch.FloatTensor([dl for dl in discard_labels]).to(device)
                 illegal_labels = torch.FloatTensor([il for il in illegal_labels]).to(device)
 
-                value, yaku, b_to_d, _ = model.forward_base(board_indexes, board_offsets)
-                discard = model.forward_discard(b_to_d)
+                value, yaku, discard = model.forward_discard(board_indexes, board_offsets)
 
                 value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
                 yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
@@ -158,8 +156,8 @@ def main():
 
                 value_loss /= 1.0
                 yaku_loss /= 3.0
-                discard_loss /= 30.0
-                illegal_loss /= -3000.0
+                discard_loss /= 1.0
+                illegal_loss /= 3000.0
                 value_loss_sum += value_loss
                 yaku_loss_sum += yaku_loss
                 discard_loss_sum += discard_loss

@@ -12,19 +12,19 @@ model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
 
 temperature = 0.01
 
-agents = [
-    ShantenActor(model),
-    Actor(model),
-    Actor(model),
-    Actor(model),
-]
-
 # agents = [
-#     Actor(model, temperature),
-#     Actor(model, temperature),
-#     Actor(model, temperature),
-#     Actor(model, temperature),
+#     ShantenActor(model),
+#     Actor(model),
+#     Actor(model),
+#     Actor(model),
 # ]
+
+agents = [
+    Actor(model, temperature),
+    Actor(model, temperature),
+    Actor(model, temperature),
+    Actor(model, temperature),
+]
 
 game = SingleGame(agents)
 # game.visualize_one_round(None)

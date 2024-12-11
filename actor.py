@@ -266,8 +266,9 @@ class DiscardDataset(Dataset):
         for entry in self.data:
             value_labels.append(entry.value_label)
             yaku_labels.append(self.make_yaku_labels([1 if flag else 0 for flag in entry.yaku_label]))
-            discard_labels.append([(entry.policy_label if entry.policy_label > 0 else entry.policy_label / 10) if idx == entry.discard_index else 0.0 for idx in range(34)])
-            illegal_labels.append([1.0 if idx in entry.illegal_indexes else 0.0 for idx in range(34)])
+            # discard_labels.append([(entry.policy_label if entry.policy_label > 0 else entry.policy_label / 10) if idx == entry.discard_index else 0.0 for idx in range(34)])
+            discard_labels.append([(entry.policy_label if idx == entry.discard_index else 0.0) if entry.policy_label >= 0 else (-0.1 * entry.policy_label if idx != entry.discard_index and idx not in entry.illegal_indexes else 0.0) for idx in range(34)])
+            illegal_labels.append([1.0 if idx not in entry.illegal_indexes else 0.0 for idx in range(34)])
         return value_labels, yaku_labels, discard_labels, illegal_labels
 
     def split(
@@ -396,14 +397,20 @@ class BaseInferred:
 class DiscardInferred:
     def __init__(
         self,
+        board: Board,
+        board_vector: FeatureVector,
         mjx_actions: list[MjxAction],
-        base_inferred: BaseInferred,
+        value: float,
+        yaku: list[float],
         discard: list[float],
     ):
-        if len(discard) != 34:
+        if len(yaku) != 3 or len(discard) != 34:
             raise Exception("unexpected length of list")
+        self.board = board
+        self.board_vector = board_vector
+        self.value = value
+        self.yaku = yaku
         self.mjx_actions = mjx_actions
-        self.base_inferred = base_inferred
         self.discard = discard
         self.selected_idx = None    # self.select()で最後に選択された牌のindex
 
@@ -430,7 +437,7 @@ class DiscardInferred:
         table = [None for _ in range(34)]
         # 通常と赤があるとき、通常から捨てる
         for mjx_action in self.mjx_actions:
-            action = Action.from_mjx(mjx_action, self.base_inferred.board)
+            action = Action.from_mjx(mjx_action, self.board)
             if action.action_kind != ActionKind.DISCARD:
                 raise Exception(f"unexpected action kind: {action.action_kind}")
             tile_idx = action.discard_tile.tile_kind
@@ -463,13 +470,21 @@ class DiscardInferred:
 class OptionalInferred:
     def __init__(
         self,
+        board: Board,
+        board_vector: FeatureVector,
         mjx_action: MjxAction,
-        base_inferred: BaseInferred,
         action_vector: FeatureVector,
+        value: float,
+        yaku: list[float],
         policy: float
     ):
+        if len(yaku) != 3:
+            raise Exception("unexpected length of list")
+        self.board = board
+        self.board_vector = board_vector
+        self.value = value
+        self.yaku = yaku
         self.mjx_action = mjx_action
-        self.base_inferred = base_inferred
         self.action_vector = action_vector
         self.policy = policy
 
@@ -487,14 +502,14 @@ class Trainer:
     ):
         if inferred.selected_idx is None:
             raise Exception("selected_idx is None")
-        training_data = DiscardTrainingData(inferred.base_inferred.board_vector, inferred.base_inferred.value, inferred.selected_idx, inferred.get_illegal_indexes())
+        training_data = DiscardTrainingData(inferred.board_vector, inferred.value, inferred.selected_idx, inferred.get_illegal_indexes())
         self.current_episode.add(training_data)
     
     def add_optional(
         self,
         inferred: OptionalInferred
     ):
-        training_data = OptionalTrainingData(inferred.base_inferred.board_vector, inferred.action_vector, inferred.base_inferred.value)
+        training_data = OptionalTrainingData(inferred.board_vector, inferred.action_vector, inferred.value)
         self.current_episode.add(training_data)
 
     def end(
@@ -618,10 +633,12 @@ class Actor(MjxAgent):
 
         return self._inner_act(observation)
 
-    def _infer_base(
+    def _infer_discard(
         self,
-        observation: MjxObservation
-    ):
+        observation: MjxObservation,
+        mjx_actions: list[MjxAction]
+        ):
+
         board_indexes, board_offsets = [], []
         board_vectors = []
 
@@ -635,35 +652,25 @@ class Actor(MjxAgent):
         board_indexes = torch.LongTensor(board_indexes)
         board_offsets = torch.LongTensor(board_offsets)
 
-        value, yaku, b_to_d, b_to_p = self.model.forward_base(board_indexes, board_offsets)
-        inferred = BaseInferred(board, board_vector, value.tolist()[0][0], yaku.tolist()[0], b_to_d, b_to_p)
-
-        return inferred
-
-    def _infer_discard(
-        self,
-        base_inferred: BaseInferred,
-        mjx_actions: list[MjxAction]
-        ):
-        
-        out = self.model.forward_discard(base_inferred.b_to_d)
-
-        inferred = DiscardInferred(mjx_actions, base_inferred, out.tolist()[0])
+        value, yaku, discard = self.model.forward_discard(board_indexes, board_offsets)
+        inferred = DiscardInferred(board, board_vector, mjx_actions, value.tolist()[0][0], yaku.tolist()[0], discard.tolist()[0])
 
         return inferred
 
     def _infer_optional(
         self,
-        base_inferred: BaseInferred,
+        observation: MjxObservation,
         mjx_actions: list[MjxAction],
         no: bool = False    # NOがないとき、NOを追加する
         ):
 
         add_no = no
-        action_indexes, action_offsets = [], []
-        action_vectors = []
+        board_indexes, board_offsets, action_indexes, action_offsets = [], [], [], []
+        board_vectors, action_vectors = [], []
 
-        board = base_inferred.board
+        board = Board.from_mjx(observation)
+        board_vector = BoardFeature.make(board)
+
         for mjx_action in mjx_actions:
             action = Action.from_mjx(mjx_action, board)
             action_vector = ActionFeature.make(action, board)
@@ -681,12 +688,21 @@ class Actor(MjxAgent):
             action_vectors.append(action_vector)
             add_no = False
 
+        for _ in zip(action_offsets, action_vectors, strict=True):
+            board_offsets.append(len(board_indexes))
+            board_indexes += board_vector.get_indexes()
+            board_vectors.append(board_vector)
+
+        board_indexes = torch.LongTensor(board_indexes)
+        board_offsets = torch.LongTensor(board_offsets)
         action_indexes = torch.LongTensor(action_indexes)
         action_offsets = torch.LongTensor(action_offsets)
 
-        out = self.model.forward_optional(action_indexes, action_offsets, base_inferred.b_to_p)
+        value, yaku, policy = self.model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
 
-        return [OptionalInferred(action, base_inferred, action_vector, outlist[0]) for action, action_vector, outlist in zip(mjx_actions, action_vectors, out.tolist(), strict=True)]
+        inferred = [OptionalInferred(board, board_vector, mjx_action, action_vector, v[0], y, p[0]) for mjx_action, action_vector, v, y, p in zip(mjx_actions, action_vectors, value.tolist(), yaku.tolist(), policy.tolist(), strict=True)]
+
+        return inferred
 
     def _inner_act(
         self,
@@ -703,12 +719,9 @@ class Actor(MjxAgent):
                 optional_actions.append(mjx_action)
         can_discard = len(discard_actions) > 0
 
-        # value, yakuを推論する
-        base_inferred = self._infer_base(observation)
-
         # 打牌以外を推論する
         if len(optional_actions) > 0:
-            optional_inferred = sorted(self._infer_optional(base_inferred, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
+            optional_inferred = sorted(self._infer_optional(observation, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
             
             optional = None
             if self.temperature == None:    # 最善手を選ぶ
@@ -728,7 +741,7 @@ class Actor(MjxAgent):
                 return optional.mjx_action
 
         # 打牌を推論する
-        discard_inferred = self._infer_discard(base_inferred, discard_actions)
+        discard_inferred = self._infer_discard(observation, discard_actions)
         mjx_action = discard_inferred.select(self.temperature)
         self.trainer.add_discard(discard_inferred)
         return mjx_action
@@ -793,13 +806,10 @@ class ShantenActor(Actor):
         can_discard = len(discard_actions) > 0
 
         selected = Action.from_mjx(mjx_selected, board)
-
-        # value, yakuを推論する
-        base_inferred = self._infer_base(observation)
         
         # 打牌以外を推論する
         if len(optional_actions) > 0:
-            optional_inferred = sorted(self._infer_optional(base_inferred, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
+            optional_inferred = sorted(self._infer_optional(observation, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
 
             for entry in optional_inferred:
                 if entry.mjx_action is None:
@@ -811,7 +821,7 @@ class ShantenActor(Actor):
                     return mjx_selected
 
         # 打牌を推論する
-        discard_inferred = self._infer_discard(base_inferred, discard_actions)
+        discard_inferred = self._infer_discard(observation, discard_actions)
         discard_inferred.set_selected(selected)
         self.trainer.add_discard(discard_inferred)
         return mjx_selected

@@ -130,7 +130,7 @@ def battle(
 def main():
     torch.set_num_threads(1)
     num_subprocess = 9  # ログを表示しないプロセスの数
-    temperature = 0.01
+    temperature = 0.1
     
     log_time = 0.0
     main_process = multiprocessing.Process(target=battle, args=(-1, None, log_time))
