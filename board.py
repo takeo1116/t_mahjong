@@ -593,7 +593,7 @@ class Board:
     @classmethod
     def from_mjx(
         cls,
-        observation # MjxObservation
+        observation, # MjxObservation
     ):
         field_wind = Wind(observation.round() % 4)
         my_wind = Wind(observation.who())
@@ -655,6 +655,7 @@ class Board:
             Relation.TOIMEN: Player(relation=Relation.TOIMEN, wind=my_wind.toimen(), score=scores[my_wind.toimen()], riichi=riichi[Relation.TOIMEN], hand=hands[Relation.TOIMEN], river=rivers[Relation.TOIMEN], safe=safe[Relation.TOIMEN]),
             Relation.KAMI: Player(relation=Relation.KAMI, wind=my_wind.kami(), score=scores[my_wind.kami()], riichi=riichi[Relation.KAMI], hand=hands[Relation.KAMI], river=rivers[Relation.KAMI], safe=safe[Relation.KAMI]),
         }
+
         return cls(field_wind, shanten, players, effective_discard)
 
 class Action:

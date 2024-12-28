@@ -64,7 +64,7 @@ class Model(torch.nn.Module):
         self.policy_norm = torch.nn.BatchNorm1d(self.POLICY_INNER_SIZE, momentum=self.MOMENTUM)
         self.policy_out = torch.nn.Linear(self.POLICY_INNER_SIZE, 1, bias=True)
 
-    def forward_discard(self, board_indexes, board_offsets):
+    def _innner_forward_discard(self, board_indexes, board_offsets):
         board = self.discard_board_bag(board_indexes, board_offsets)
         board = torch.nn.functional.relu(board)
         board = self.discard_board_norm_1(board)
@@ -94,6 +94,13 @@ class Model(torch.nn.Module):
         yaku = torch.nn.functional.relu(yaku)
         yaku = self.discard_yaku_norm(yaku)
         yaku = self.discard_yaku_out(yaku)
+
+        return value, yaku, discard
+
+    def forward_discard(self, board_indexes, board_offsets, valid_masks):
+        # 無効な手を小さい値でマスクする
+        value, yaku, discard = self._innner_forward_discard(board_indexes, board_offsets)
+        discard[~valid_masks] = -1e18
 
         return value, yaku, discard
 

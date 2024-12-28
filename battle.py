@@ -105,13 +105,29 @@ def battle(
     model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
     model_path = ""
 
-    agents = [
-        Actor(model, None),
-        Actor(model, None),
+    # battle_agents = [
+    #     ShantenActor(model),
+    #     ShantenActor(model),
+    #     ShantenActor(model),
+    #     ShantenActor(model)
+    # ]
+    battle_agents = [
+        Actor(model),
+        Actor(model),
         Actor(model, temperature),
         ShantenActor(model)
     ]
-
+    log_agents = [
+        Actor(model),
+        Actor(model),
+        Actor(model),
+        ShantenActor(model)
+    ]
+    agents = None
+    if log_time is not None:
+        agents = log_agents
+    else:
+        agents = battle_agents
     game = SingleGame(agents)
     cnt = 0
     while True:
@@ -130,7 +146,7 @@ def battle(
 def main():
     torch.set_num_threads(1)
     num_subprocess = 9  # ログを表示しないプロセスの数
-    temperature = 0.1
+    temperature = 1.0
     
     log_time = 0.0
     main_process = multiprocessing.Process(target=battle, args=(-1, None, log_time))
