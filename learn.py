@@ -7,17 +7,18 @@ from collections import deque
 from torch import nn
 
 from model import Model
-from feature import BoardFeature, HandFeature, ActionFeature
-from actor import Actor, Dataset, DiscardDataset, OptionalDataset
+from feature import BoardFeature, HandFeature, DiscardActionFeature, OptionalActionFeature
+from actor import Actor, Dataset, DiscardDataset, OptionalDataset, DataType
 
 class LearningConstants:
     BATTLE_NUM = 10
-    BATCH_SIZE = 15000
+    BATCH_SIZE = 5000
     FILE_SIZE = 100
-    FILE_MIN = 200
+    FILE_MIN = 75
     SAVE_INTERVAL = 100000
     HOLD_MODELS = 10
-    DELETE_RATE = 0.7
+    DELETE_RATE_DISCARD = 0.7
+    DELETE_RATE_OPTIONAL = 0.5
     YAKU_NUM = 3
     BIN_NUM = 5
 
@@ -52,9 +53,13 @@ def get_grad_norm(model):
             total_norm += param_norm ** 2
     return total_norm ** 0.5
 
-def lr_schedule(learned_data):
-    # return 1e-3
-    return 1e-4
+def lr_schedule(learned_data, datatype):
+    if datatype == DataType.DISCARD:
+        return 1e-4
+    elif datatype == DataType.OPTIONAL:
+        return 1e-4
+    else:
+        return 1.0
 
 def main():
     # ディレクトリ生成
@@ -73,7 +78,7 @@ def main():
         os.makedirs(os.path.join(learn_dir, f"learndata_{agent_idx}/discard_{bin_idx}"), exist_ok=True)
         os.makedirs(os.path.join(learn_dir, f"learndata_{agent_idx}/optional_{bin_idx}"), exist_ok=True)
 
-    model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
+    model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
     paths = deque()
     learned_discard_data, learned_optional_data, last_saved = 0, 0, 0
     model_path = os.path.join(learn_dir, f"model_{agent_idx}_{learned_discard_data}_{learned_optional_data}.pth")
@@ -96,7 +101,7 @@ def main():
     while True:
         # optional学習
         optional_dir = f"./learn/learndata_{0}/optional_{bin_idx}"
-        lr = lr_schedule(learned_optional_data)
+        lr = lr_schedule(learned_optional_data, DataType.OPTIONAL)
         optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, eps=1e-4)
         files = [os.path.join(optional_dir, file) for file in os.listdir(optional_dir)] # TODO: 端数が捨てられる問題をどうする？
 
@@ -129,12 +134,12 @@ def main():
 
                 value, yaku, policy = model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
 
-                value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="mean", delta=0.2)
-                yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="mean")
-                policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="mean", delta=0.2)
+                value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
+                yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
+                policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="sum", delta=0.2)
 
                 value_loss /= 1.0
-                yaku_loss /= 3.0
+                yaku_loss /= 30.0
                 policy_loss /= 0.4
                 value_loss_sum += value_loss
                 yaku_loss_sum += yaku_loss
@@ -146,22 +151,24 @@ def main():
                 learned_optional_data += len(data)
 
                 loss.backward()
+                # grad_norm = get_grad_norm(model)
+                nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 grad_norm = get_grad_norm(model)
-                # nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 optimizer.step()
 
-            print(f"OPTIONAL:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
+            if loss_count > 0:
+                print(f"OPTIONAL:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
 
             for file in files:
                 r = random.random()
-                if r < LearningConstants.DELETE_RATE:
+                if r < LearningConstants.DELETE_RATE_OPTIONAL:
                     os.remove(file)
         else:
             print(f"optional:: bin {bin_idx}: file({len(files)}) < min({LearningConstants.FILE_MIN})")
 
         # discard学習
         discard_dir = f"./learn/learndata_{0}/discard_{bin_idx}"
-        lr = lr_schedule(learned_discard_data)
+        lr = lr_schedule(learned_discard_data, DataType.DISCARD)
         optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, eps=1e-4)
         files = [os.path.join(discard_dir, file) for file in os.listdir(discard_dir)]
 
@@ -172,6 +179,8 @@ def main():
                     b += f.read()
             
             fulldataset = DiscardDataset.from_bytes(b)
+            _, _, _, _, v = fulldataset.make_inputs()
+            _, _, _, _ = fulldataset.make_labels(v)
             datasets = fulldataset.split(LearningConstants.BATCH_SIZE)
 
             value_loss_sum, yaku_loss_sum, discard_loss_sum = 0.0, 0.0, 0.0
@@ -181,31 +190,33 @@ def main():
             for data in datasets:
                 optimizer.zero_grad()
 
-                board_indexes, board_offsets, valid_masks = data.make_inputs()
+                board_indexes, board_offsets, action_indexes, action_offsets, valid_masks = data.make_inputs()
                 board_indexes = torch.LongTensor(board_indexes).to(device)
                 board_offsets = torch.LongTensor(board_offsets).to(device)
+                action_indexes = torch.LongTensor(action_indexes).to(device)
+                action_offsets = torch.LongTensor(action_offsets).to(device)
                 # print([len(v) for v in valid_masks])
-                valid_masks = torch.tensor(valid_masks, dtype=torch.bool)
+                valid_tensor = torch.tensor(valid_masks, dtype=torch.bool)
 
-                value_labels, yaku_labels, discard_idxes, policy_labels = data.make_labels()
+                value_labels, yaku_labels, discard_idxes, policy_labels = data.make_labels(valid_masks)
                 value_labels = torch.FloatTensor([[v] for v in value_labels]).to(device)
                 yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(device)
                 discard_idxes = torch.LongTensor([d for d in discard_idxes]).to(device)
                 policy_labels = torch.FloatTensor([p for p in policy_labels]).to(device)
 
-                value, yaku, discard = model.forward_discard(board_indexes, board_offsets, valid_masks)
+                value, yaku, discard = model.forward_discard(board_indexes, board_offsets, action_indexes, action_offsets, valid_tensor)
 
-                value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="mean", delta=0.2)
-                yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="mean")
+                value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
+                yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
                 # print(discard, discard_idxes)
                 discard_loss = torch.nn.functional.cross_entropy(discard, discard_idxes, reduction="none")
                 # print(discard_loss, policy_labels)
                 discard_loss *= policy_labels
-                discard_loss = discard_loss.mean()
+                discard_loss = discard_loss.sum()
 
                 value_loss /= 1.0
-                yaku_loss /= 1.0
-                discard_loss /= 1.0
+                yaku_loss /= 30.0
+                discard_loss /= 10.0
                 value_loss_sum += value_loss
                 yaku_loss_sum += yaku_loss
                 discard_loss_sum += discard_loss
@@ -215,15 +226,16 @@ def main():
                 learned_discard_data += len(data)
 
                 loss.backward()
+                # grad_norm = get_grad_norm(model)
+                nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 grad_norm = get_grad_norm(model)
-                # nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                 optimizer.step()
 
             print(f"DISCARD:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, discard_loss: {discard_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
 
             for file in files:
                 r = random.random()
-                if r < LearningConstants.DELETE_RATE:
+                if r < LearningConstants.DELETE_RATE_DISCARD:
                     os.remove(file)
 
             if learned_discard_data > last_saved + LearningConstants.SAVE_INTERVAL:
@@ -243,7 +255,7 @@ def main():
 
         else:
             print(f"discard:: bin {bin_idx}: file({len(files)}) < min({LearningConstants.FILE_MIN})")
-        time.sleep(20)
+        time.sleep(5)
 
 
 

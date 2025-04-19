@@ -7,9 +7,9 @@ import multiprocessing
 import mjx
 
 from learn import LearningConstants
-from actor import ShantenActor, Actor
+from actor import ShantenActor, MenzenActor, Actor
 from model import Model
-from feature import BoardFeature, ActionFeature
+from feature import BoardFeature, DiscardActionFeature, OptionalActionFeature
 
 class SingleGame:
     def __init__(
@@ -97,37 +97,57 @@ class SingleGame:
 def battle(
     iteration = -1,
     temperature: float = None,
+    rule_index: int = None,
     log_time: float = None  # 入ってるとログを表示する
 ):
     # とりあえずmodel0のみ
     learn_dir = "./learn"
 
-    model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
+    model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
     model_path = ""
 
-    # battle_agents = [
-    #     ShantenActor(model),
-    #     ShantenActor(model),
-    #     ShantenActor(model),
-    #     ShantenActor(model)
-    # ]
-    battle_agents = [
-        Actor(model),
-        Actor(model),
-        Actor(model, temperature),
-        ShantenActor(model)
-    ]
-    log_agents = [
-        Actor(model),
-        Actor(model),
-        Actor(model),
-        ShantenActor(model)
-    ]
     agents = None
-    if log_time is not None:
-        agents = log_agents
-    else:
-        agents = battle_agents
+    if log_time is not None:    # log
+        agents = [
+            Actor(model),
+            Actor(model),
+            Actor(model),
+            ShantenActor(model)
+        ]
+        # agents = [
+        #     MenzenActor(model),
+        #     MenzenActor(model),
+        #     MenzenActor(model),
+        #     ShantenActor(model)
+        # ]
+    else:                       # 自己対戦
+        if rule_index == 0:
+            agents = [
+                Actor(model),
+                Actor(model, temperature=None),
+                Actor(model, temperature=1.0),
+                ShantenActor(model)
+            ]
+        elif rule_index == 1:
+            agents = [
+                Actor(model),
+                Actor(model, temperature=None),
+                Actor(model, temperature=1.0),
+                MenzenActor(model)
+            ]
+        else:
+            agents = [
+                Actor(model),
+                Actor(model),
+                Actor(model),
+                Actor(model, temperature=1.0)
+            ]
+        # agents = [
+        #     ShantenActor(model),
+        #     ShantenActor(model),
+        #     ShantenActor(model),
+        #     ShantenActor(model)
+        # ]
     game = SingleGame(agents)
     cnt = 0
     while True:
@@ -139,7 +159,9 @@ def battle(
 
         model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"), weights_only=False))
         game.repeat(LearningConstants.BATTLE_NUM, log_time)
-        agents[0].export(os.path.join(learn_dir, f"learndata_{0}"), LearningConstants.FILE_SIZE, LearningConstants.BIN_NUM)
+
+        for player_id in range(4):
+            agents[player_id].export(os.path.join(learn_dir, f"learndata_{0}"), LearningConstants.FILE_SIZE, LearningConstants.BIN_NUM)
 
         cnt += 1
 
@@ -149,15 +171,18 @@ def main():
     temperature = 1.0
     
     log_time = 0.0
-    main_process = multiprocessing.Process(target=battle, args=(-1, None, log_time))
+    main_process = multiprocessing.Process(target=battle, args=(-1, None, 0, log_time))
     main_process.start()
 
     sub_processes = []
+    rule_index = 0
     while True:
         while len(sub_processes) < num_subprocess:
-            process = multiprocessing.Process(target=battle, args=(10, temperature, None))
+            process = multiprocessing.Process(target=battle, args=(10, temperature, rule_index, None))
             sub_processes.append(process)
             process.start()
+            rule_index = 1 - rule_index
+            # rule_index = (rule_index + 1) % num_subprocess
 
         for process in sub_processes:
             process.join(timeout=1)

@@ -152,6 +152,11 @@ class HandFeature:
         
         for effective_idx in board.effective_discard:
             v.add(offset+cls.EFFECTIVE_TILES+effective_idx)
+        # print(my_hand, board.effective_discard)
+        # closed = [tile.tile_kind for tile in my_hand.closed]
+        # for k in board.effective_discard:
+        #     if k not in closed:
+        #         print(my_hand, board.effective_discard)
 
         # 順子と嵌張
         for tile_start, tile_end, chi_start in [(TileKind.M2, TileKind.M8, ChiKind.M123), (TileKind.P2, TileKind.P8, ChiKind.P123), (TileKind.S2, TileKind.S8, ChiKind.S123)]:
@@ -275,7 +280,22 @@ class BoardFeature:
 
         return v
 
-class ActionFeature:
+class DiscardActionFeature:
+    EFFECTIVE_TILES = 0
+    SIZE = EFFECTIVE_TILES + TileKind.SIZE
+
+    @classmethod
+    def make(
+        cls,
+        board: Board
+    ):
+        v = FeatureVector()
+
+        for effective_idx in board.effective_discard:
+            v.add(cls.EFFECTIVE_TILES+effective_idx)
+        return v
+
+class OptionalActionFeature:
     ACTION_KIND = 0
     DISCARD_TILE = ACTION_KIND + ActionKind.SIZE
     DISCARD_TSUMOGIRI = DISCARD_TILE + TileKind.SIZE
