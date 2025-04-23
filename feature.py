@@ -212,8 +212,111 @@ class RiverFeature:
         for kind in kinds:
             v.add(offset+cls.DISCARDED+kind)
 
+class ScoreDiffFeature:
+    PLUS_OVER_48000 = 0
+    PLUS_24000_47999 = 1
+    PLUS_12000_23999 = 2
+    PLUS_8000_11999 = 3
+    PLUS_4000_7999 = 4
+    PLUS_2000_3999 = 5
+    PLUS_1_1999 = 6
+    SAME = 7
+    MINUS_1_1999 = 8
+    MINUS_2000_3999 = 9
+    MINUS_4000_7999 = 10
+    MINUS_8000_11999 = 11
+    MINUS_12000_23999 = 12
+    MINUS_24000_47999 = 13
+    MINUS_OVER_48000 = 14
+    SIZE = 15
+
+    @classmethod
+    def add(
+        cls,
+        v: FeatureVector,
+        offset: int,
+        score_diff: int
+    ):
+        if 48000 <= score_diff:
+            v.add(offset+cls.PLUS_OVER_48000)
+        elif 24000 <= score_diff:
+            v.add(offset+cls.PLUS_24000_47999)
+        elif 12000 <= score_diff:
+            v.add(offset+cls.PLUS_12000_23999)
+        elif 8000 <= score_diff:
+            v.add(offset+cls.PLUS_8000_11999)
+        elif 4000 <= score_diff:
+            v.add(offset+cls.PLUS_4000_7999)
+        elif 2000 <= score_diff:
+            v.add(offset+cls.PLUS_2000_3999)
+        elif 1 <= score_diff:
+            v.add(offset+cls.PLUS_1_1999)
+        elif score_diff == 0:
+            v.add(offset+cls.SAME)
+        elif score_diff <= -1:
+            v.add(offset+cls.MINUS_1_1999)
+        elif score_diff <= -2000:
+            v.add(offset+cls.MINUS_2000_3999)
+        elif score_diff <= -4000:
+            v.add(offset+cls.MINUS_4000_7999)
+        elif score_diff <= -8000:
+            v.add(offset+cls.MINUS_8000_11999)
+        elif score_diff <= -12000:
+            v.add(offset+cls.MINUS_12000_23999)
+        elif score_diff <= -24000:
+            v.add(offset+cls.MINUS_24000_47999)
+        else:
+            v.add(offset+cls.MINUS_OVER_48000)
+        
+class ScoreFeature:
+    SCORE_OVER_69000 = 0
+    SCORE_53000_68999 = 1
+    SCORE_45000_52999 = 2
+    SCORE_37000_44999 = 3
+    SCORE_33000_36999 = 4
+    SCORE_29000_32999 = 5
+    SCORE_21000_28999 = 6
+    SCORE_17000_20999 = 7
+    SCORE_13000_16999 = 8
+    SCORE_5000_12999 = 9
+    SCORE_UNDER_4999 = 10
+    SIZE = 11
+
+    @classmethod
+    def add(
+        cls,
+        v: FeatureVector,
+        offset: int,
+        score: int
+    ):
+        if 69000 <= score:
+            v.add(offset+cls.SCORE_OVER_69000)
+        elif 53000 <= score:
+            v.add(offset+cls.SCORE_53000_68999)
+        elif 45000 <= score:
+            v.add(offset+cls.SCORE_45000_52999)
+        elif 37000 <= score:
+            v.add(offset+cls.SCORE_37000_44999)
+        elif 33000 <= score:
+            v.add(offset+cls.SCORE_33000_36999)
+        elif 29000 <= score:
+            v.add(offset+cls.SCORE_29000_32999)
+        elif 21000 <= score:
+            v.add(offset+cls.SCORE_21000_28999)
+        elif 17000 <= score:
+            v.add(offset+cls.SCORE_17000_20999)
+        elif 13000 <= score:
+            v.add(offset+cls.SCORE_13000_16999)
+        elif 5000 <= score:
+            v.add(offset+cls.SCORE_5000_12999)
+        elif 0 <= score:
+            v.add(offset+cls.SCORE_UNDER_4999)
+        else:
+            Exception("unexpected score")
+
 class MyPlayerFeature:
-    WIND = 0
+    SCORE = 0
+    WIND = SCORE + ScoreFeature.SIZE
     RIICHI = WIND + Wind.SIZE
     HAND = RIICHI + 1
     RIVER = HAND + HandFeature.SIZE
@@ -227,6 +330,7 @@ class MyPlayerFeature:
         board: Board
     ):
         player = board.players[Relation.ME]
+        ScoreFeature.add(v, offset+cls.SCORE, player.score)
         v.add(offset+cls.WIND+player.wind)
         if player.riichi:
             v.add(offset+cls.RIICHI)
@@ -234,7 +338,9 @@ class MyPlayerFeature:
         RiverFeature.add(v, offset+cls.RIVER, player.river)
 
 class OpponentPlayerFeature:
-    WIND = 0
+    SCORE = 0
+    SCORE_DIFF = SCORE + ScoreFeature.SIZE
+    WIND = SCORE_DIFF + ScoreDiffFeature.SIZE
     RIICHI = WIND + Wind.SIZE
     EXPOSED = RIICHI + 1
     RIVER = EXPOSED + ExposedFeature.SIZE
@@ -245,8 +351,13 @@ class OpponentPlayerFeature:
         cls,
         v: FeatureVector,
         offset: int,
-        player: Player
+        relation: int,
+        board: Board,
     ):
+        player = board.players[relation]
+        score = player.score
+        ScoreFeature.add(v, offset+cls.SCORE, score)
+        ScoreDiffFeature.add(v, offset+cls.SCORE_DIFF, score-board.players[Relation.ME].score)
         v.add(offset+cls.WIND+player.wind)
         if player.riichi:
             v.add(offset+cls.RIICHI)
@@ -254,7 +365,8 @@ class OpponentPlayerFeature:
         RiverFeature.add(v, offset+cls.RIVER, player.river)
 
 class BoardFeature:
-    WIND = 0
+    KYOKU = 0
+    WIND = KYOKU + 8
     SHANTEN = WIND + Wind.SIZE
     PHASE = SHANTEN + ShantenFeature.SIZE
     MY_PLAYER = PHASE + PhaseFeature.SIZE
@@ -270,13 +382,15 @@ class BoardFeature:
     ):
         v = FeatureVector()
 
+        kyoku = min(board.kyoku, 7)
+        v.add(cls.KYOKU+kyoku)
         v.add(cls.WIND+board.wind)
         ShantenFeature.add(v, cls.SHANTEN, board.shanten)
         PhaseFeature.add(v, cls.PHASE, board.players[Relation.ME])
         MyPlayerFeature.add(v, cls.MY_PLAYER, board)
-        OpponentPlayerFeature.add(v, cls.SHIMO_PLAYER, board.players[Relation.SHIMO])
-        OpponentPlayerFeature.add(v, cls.TOIMEN_PLAYER, board.players[Relation.TOIMEN])
-        OpponentPlayerFeature.add(v, cls.KAMI_PLAYER, board.players[Relation.KAMI])
+        OpponentPlayerFeature.add(v, cls.SHIMO_PLAYER, Relation.SHIMO, board)
+        OpponentPlayerFeature.add(v, cls.TOIMEN_PLAYER, Relation.TOIMEN, board)
+        OpponentPlayerFeature.add(v, cls.KAMI_PLAYER, Relation.KAMI, board)
 
         return v
 
@@ -294,6 +408,9 @@ class DiscardActionFeature:
         for effective_idx in board.effective_discard:
             v.add(cls.EFFECTIVE_TILES+effective_idx)
         return v
+
+# class DiscardActionCNNFeature:
+
 
 class OptionalActionFeature:
     ACTION_KIND = 0

@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import json
 import torch
@@ -34,6 +35,14 @@ class SingleGame:
                 player_ids = state["publicObservation"]["playerIds"]
                 init_scores = state["publicObservation"]["initScore"]["tens"]
                 final_scores = state["roundTerminal"]["finalScore"]["tens"]
+                score_diffs = [final - init for init, final in zip(init_scores, final_scores)]
+                score_diffs = [
+                    [score_diffs[0], score_diffs[1], score_diffs[2], score_diffs[3]],
+                    [score_diffs[1], score_diffs[2], score_diffs[3], score_diffs[0]],
+                    [score_diffs[2], score_diffs[3], score_diffs[0], score_diffs[1]],
+                    [score_diffs[3], score_diffs[0], score_diffs[1], score_diffs[2]],
+                    ]
+                ranks = [sorted(final_scores, reverse=True).index(x) + 1 for x in final_scores]
                 yakus = [[False for _ in range(55)] for _ in range(4)]
 
                 if "wins" in state["roundTerminal"]:
@@ -52,29 +61,36 @@ class SingleGame:
                                 yakus[winner][idx] = True
                         else:
                             raise Exception(f"yakus or yakumans is not in win: {win}")
-                for player_id, init, final, yaku in zip(player_ids, init_scores, final_scores, yakus):
-                    self.agents[player_id].end_round(final - init, yaku)
+                for player_id, diffs, yaku, rank in zip(player_ids, score_diffs, yakus, ranks):
+                    self.agents[player_id].end_round(diffs, rank, yaku)
 
                 if self.env.done(done_type="game"): # ゲーム終了時
-                    ranks = [sorted(final_scores, reverse=True).index(x) + 1 for x in final_scores]
                     for player_id, final, rank in zip(player_ids, final_scores, ranks, strict=True):
                         self.agents[player_id].end_game(final, rank)
 
     def visualize_one_round(
         self,
-        save_path: str
+        save_dir:str
     ):
+        if os.path.isdir(save_dir):
+            shutil.rmtree(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         obs_dict = self.env.reset()
+        Actor.LOG_FILE = f"{save_dir}/actor_log.txt"
+
+        turn = 0
         while not self.env.done(done_type="round"):
             actions = {player_id: self.agents[player_id].act(obs) for player_id, obs in obs_dict.items()}
             obs_dict = self.env.step(actions)
+            self.env.state().save_svg(f"{save_dir}/{turn}.svg")
+            turn += 1
+        Actor.LOG_FILE = None
 
         state = json.loads(self.env.state().to_json())
         if "wins" in state["roundTerminal"]:
             print(state["roundTerminal"]["wins"])
         if "noWinner" in state["roundTerminal"]:
             print(state["roundTerminal"]["noWinner"])
-        self.env.state().save_svg("./visualize.svg")
 
     def repeat(
         self,

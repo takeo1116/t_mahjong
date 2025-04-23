@@ -580,12 +580,13 @@ class Player:
 class Board:
     def __init__(
         self,
-        wind: Wind,
+        kyoku: int,
         shanten: int,
         players: list[Player],
         effective_discard: list[TileKind]
     ):
-        self.wind = wind
+        self.kyoku = kyoku
+        self.wind = Wind(kyoku % 4)
         self.shanten = shanten
         self.players = players
         self.effective_discard = effective_discard
@@ -595,7 +596,8 @@ class Board:
         cls,
         observation, # MjxObservation
     ):
-        field_wind = Wind(observation.round() % 4)
+        kyoku = observation.round()
+        # field_wind = Wind(kyoku % 4)
         my_wind = Wind(observation.who())
 
         mjx_hand = observation.curr_hand()
@@ -656,7 +658,7 @@ class Board:
             Relation.KAMI: Player(relation=Relation.KAMI, wind=my_wind.kami(), score=scores[my_wind.kami()], riichi=riichi[Relation.KAMI], hand=hands[Relation.KAMI], river=rivers[Relation.KAMI], safe=safe[Relation.KAMI]),
         }
 
-        return cls(field_wind, shanten, players, effective_discard)
+        return cls(kyoku, shanten, players, effective_discard)
 
 class Action:
     def __init__(self):
