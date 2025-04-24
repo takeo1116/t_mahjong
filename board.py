@@ -581,12 +581,14 @@ class Board:
     def __init__(
         self,
         kyoku: int,
+        doras: list[TileKind],
         shanten: int,
         players: list[Player],
         effective_discard: list[TileKind]
     ):
         self.kyoku = kyoku
         self.wind = Wind(kyoku % 4)
+        self.doras = doras
         self.shanten = shanten
         self.players = players
         self.effective_discard = effective_discard
@@ -603,6 +605,8 @@ class Board:
         mjx_hand = observation.curr_hand()
         my_hand = Hand.from_mjx(mjx_hand)
         shanten = mjx_hand.shanten_number()
+
+        doras = [TileKind.from_mjx(dora) for dora in observation.doras()]   # 表示牌ではなくドラそのもの
 
         effective_discard = [TileKind.from_mjx(entry) for entry in mjx_hand.effective_discard_types()]
 
@@ -658,7 +662,7 @@ class Board:
             Relation.KAMI: Player(relation=Relation.KAMI, wind=my_wind.kami(), score=scores[my_wind.kami()], riichi=riichi[Relation.KAMI], hand=hands[Relation.KAMI], river=rivers[Relation.KAMI], safe=safe[Relation.KAMI]),
         }
 
-        return cls(kyoku, shanten, players, effective_discard)
+        return cls(kyoku, doras, shanten, players, effective_discard)
 
 class Action:
     def __init__(self):

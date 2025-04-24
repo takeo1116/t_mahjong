@@ -8,7 +8,7 @@ from feature import BoardFeature, DiscardActionFeature, OptionalActionFeature
 
 
 model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
-model.load_state_dict(torch.load("./learn/model_0_120570000_38770000.pth"))
+model.load_state_dict(torch.load("./learn/model_0_71605000_18715000.pth"))
 
 temperature = 1.0
 

@@ -113,8 +113,8 @@ class HandFeature:
     PHASE = MENZEN + 1
     EXPOSED = PHASE + PhaseFeature.SIZE                             # 副露
     CLOSED_TILES = EXPOSED + ExposedFeature.SIZE                    # 手牌の種類と枚数
-    EFFECTIVE_TILES = CLOSED_TILES + TileKind.SIZE * 4              # シャンテン数が進む牌
-    CLOSED_CHI = EFFECTIVE_TILES + TileKind.SIZE                    # 手牌にある順子
+    # EFFECTIVE_TILES = CLOSED_TILES + TileKind.SIZE * 4            # シャンテン数が進む牌
+    CLOSED_CHI = CLOSED_TILES + TileKind.SIZE * 4                   # 手牌にある順子
     CLOSED_OUTSIDE_WAIT = CLOSED_CHI + ChiKind.SIZE                 # 手牌にある塔子
     CLOSED_INSIDE_WAIT = CLOSED_OUTSIDE_WAIT + SerialPairKind.SIZE  # 手牌にある嵌張
     EXIST_MAN = CLOSED_INSIDE_WAIT + ChiKind.SIZE                   # 手牌と副露に萬子があるか
@@ -150,8 +150,8 @@ class HandFeature:
             for i in range(cnt):
                 v.add(offset+cls.CLOSED_TILES+kind*4+i)
         
-        for effective_idx in board.effective_discard:
-            v.add(offset+cls.EFFECTIVE_TILES+effective_idx)
+        # for effective_idx in board.effective_discard:
+        #     v.add(offset+cls.EFFECTIVE_TILES+effective_idx)
         # print(my_hand, board.effective_discard)
         # closed = [tile.tile_kind for tile in my_hand.closed]
         # for k in board.effective_discard:
@@ -344,7 +344,8 @@ class OpponentPlayerFeature:
     RIICHI = WIND + Wind.SIZE
     EXPOSED = RIICHI + 1
     RIVER = EXPOSED + ExposedFeature.SIZE
-    SIZE = RIVER + RiverFeature.SIZE
+    SAFE = RIVER + RiverFeature.SIZE
+    SIZE = SAFE + TileKind.SIZE
 
     @classmethod
     def add(
@@ -363,6 +364,8 @@ class OpponentPlayerFeature:
             v.add(offset+cls.RIICHI)
         ExposedFeature.add(v, offset+cls.EXPOSED, player.hand)
         RiverFeature.add(v, offset+cls.RIVER, player.river)
+        for safe in player.safe:
+            v.add(offset+cls.SAFE+safe)
 
 class BoardFeature:
     KYOKU = 0
@@ -396,7 +399,9 @@ class BoardFeature:
 
 class DiscardActionFeature:
     EFFECTIVE_TILES = 0
-    SIZE = EFFECTIVE_TILES + TileKind.SIZE
+    DORA = EFFECTIVE_TILES + TileKind.SIZE
+    HAVE_RED = DORA + TileKind.SIZE
+    SIZE = HAVE_RED + 3
 
     @classmethod
     def make(
@@ -407,22 +412,22 @@ class DiscardActionFeature:
 
         for effective_idx in board.effective_discard:
             v.add(cls.EFFECTIVE_TILES+effective_idx)
+        for dora in board.doras:
+            v.add(cls.DORA+dora)
+        for tile in board.players[Relation.ME].hand.closed:
+            if tile.red:
+                if tile.tile_kind == TileKind.M5:
+                    v.add(cls.HAVE_RED+0)
+                elif tile.tile_kind == TileKind.P5:
+                    v.add(cls.HAVE_RED+1)
+                elif tile.tile_kind == TileKind.S5:
+                    v.add(cls.HAVE_RED+2)
+
         return v
-
-# class DiscardActionCNNFeature:
-
 
 class OptionalActionFeature:
     ACTION_KIND = 0
-    DISCARD_TILE = ACTION_KIND + ActionKind.SIZE
-    DISCARD_TSUMOGIRI = DISCARD_TILE + TileKind.SIZE
-    DISCARD_RED = DISCARD_TSUMOGIRI + 1
-    DISCARD_DORA = DISCARD_RED + 1
-    DISCARD_EFFECTIVE = DISCARD_DORA + 1
-    DISCARD_SAFE_SHIMO = DISCARD_EFFECTIVE + 1
-    DISCARD_SAFE_TOIMEN = DISCARD_SAFE_SHIMO + 1
-    DISCARD_SAFE_KAMI = DISCARD_SAFE_TOIMEN + 1
-    CHI_KIND = DISCARD_SAFE_KAMI + 1
+    CHI_KIND = ACTION_KIND + ActionKind.SIZE
     PON_KIND = CHI_KIND + ChiKind.SIZE * 3
     KAN_OPEN_KIND = PON_KIND + TileKind.SIZE
     KAN_CLOSE_KIND = KAN_OPEN_KIND + TileKind.SIZE
@@ -442,40 +447,21 @@ class OptionalActionFeature:
         v.add(cls.ACTION_KIND+action.action_kind)
         match action.action_kind:
             case ActionKind.DISCARD:
-                tile_kind = action.discard_tile.tile_kind
-                v.add(cls.DISCARD_TILE+tile_kind)
-                if action.discard_tsumogiri:
-                    v.add(cls.DISCARD_TSUMOGIRI)
-                if action.discard_red:
-                    v.add(cls.DISCARD_RED)
-                if action.discard_dora:
-                    v.add(cls.DISCARD_DORA)
-                if action.discard_effective:
-                    v.add(cls.DISCARD_EFFECTIVE)
-                
-                if tile_kind in board.players[1].safe:
-                    v.add(cls.DISCARD_SAFE_SHIMO)
-                if tile_kind in board.players[2].safe:
-                    v.add(cls.DISCARD_SAFE_TOIMEN)
-                if tile_kind in board.players[3].safe:
-                    v.add(cls.DISCARD_SAFE_KAMI)
+                Exception("Unexpected ActionKind(DISCARD)")
 
             case ActionKind.CHI:    # (chi, steal) = (M123,M1), (M123, M2), ..., (M789, M9), (P123, P1), ..., (S789, S9)
                 if ChiKind.M123 <= action.chi_kind <= ChiKind.M789:
                     M_idx = action.chi_kind - ChiKind.M123
                     diff = action.steal_tile.tile_kind - TileKind.M2 - (action.chi_kind - ChiKind.M123) + 1 # stealが順子の左なら0, 中央なら1, 右なら2
                     v.add(cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff)
-                    # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, M_idx: {M_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff}")
                 elif ChiKind.P123 <= action.chi_kind <= ChiKind.P789:
                     P_idx = action.chi_kind - ChiKind.P123
                     diff = action.steal_tile.tile_kind - TileKind.P2 - (action.chi_kind - ChiKind.P123) + 1
                     v.add(cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff)
-                    # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, P_idx: {P_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff}")
                 elif ChiKind.S123 <= action.chi_kind <= ChiKind.S789:
                     S_idx = action.chi_kind - ChiKind.S123
                     diff = action.steal_tile.tile_kind - TileKind.S2 - (action.chi_kind - ChiKind.S123) + 1
                     v.add(cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff)
-                    # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, S_idx: {S_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff}")
             case ActionKind.PON:
                 v.add(cls.PON_KIND+action.pon_kind)
             case ActionKind.KAN_OPEN:
@@ -496,3 +482,88 @@ class OptionalActionFeature:
                 pass
 
         return v
+
+# class OptionalActionFeature:
+#     ACTION_KIND = 0
+#     DISCARD_TILE = ACTION_KIND + ActionKind.SIZE
+#     DISCARD_TSUMOGIRI = DISCARD_TILE + TileKind.SIZE
+#     DISCARD_RED = DISCARD_TSUMOGIRI + 1
+#     DISCARD_DORA = DISCARD_RED + 1
+#     DISCARD_EFFECTIVE = DISCARD_DORA + 1
+#     DISCARD_SAFE_SHIMO = DISCARD_EFFECTIVE + 1
+#     DISCARD_SAFE_TOIMEN = DISCARD_SAFE_SHIMO + 1
+#     DISCARD_SAFE_KAMI = DISCARD_SAFE_TOIMEN + 1
+#     CHI_KIND = DISCARD_SAFE_KAMI + 1
+#     PON_KIND = CHI_KIND + ChiKind.SIZE * 3
+#     KAN_OPEN_KIND = PON_KIND + TileKind.SIZE
+#     KAN_CLOSE_KIND = KAN_OPEN_KIND + TileKind.SIZE
+#     KAN_ADD_KIND = KAN_CLOSE_KIND + TileKind.SIZE
+#     TSUMO_TILE = KAN_ADD_KIND + TileKind.SIZE
+#     RON_TILE = TSUMO_TILE + TileKind.SIZE
+#     SIZE = RON_TILE + TileKind.SIZE
+
+#     @classmethod
+#     def make(
+#         cls,
+#         action: Action,
+#         board: Board
+#     ):
+#         v = FeatureVector()
+
+#         v.add(cls.ACTION_KIND+action.action_kind)
+#         match action.action_kind:
+#             case ActionKind.DISCARD:
+#                 tile_kind = action.discard_tile.tile_kind
+#                 v.add(cls.DISCARD_TILE+tile_kind)
+#                 if action.discard_tsumogiri:
+#                     v.add(cls.DISCARD_TSUMOGIRI)
+#                 if action.discard_red:
+#                     v.add(cls.DISCARD_RED)
+#                 if action.discard_dora:
+#                     v.add(cls.DISCARD_DORA)
+#                 if action.discard_effective:
+#                     v.add(cls.DISCARD_EFFECTIVE)
+                
+#                 if tile_kind in board.players[1].safe:
+#                     v.add(cls.DISCARD_SAFE_SHIMO)
+#                 if tile_kind in board.players[2].safe:
+#                     v.add(cls.DISCARD_SAFE_TOIMEN)
+#                 if tile_kind in board.players[3].safe:
+#                     v.add(cls.DISCARD_SAFE_KAMI)
+
+#             case ActionKind.CHI:    # (chi, steal) = (M123,M1), (M123, M2), ..., (M789, M9), (P123, P1), ..., (S789, S9)
+#                 if ChiKind.M123 <= action.chi_kind <= ChiKind.M789:
+#                     M_idx = action.chi_kind - ChiKind.M123
+#                     diff = action.steal_tile.tile_kind - TileKind.M2 - (action.chi_kind - ChiKind.M123) + 1 # stealが順子の左なら0, 中央なら1, 右なら2
+#                     v.add(cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff)
+#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, M_idx: {M_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff}")
+#                 elif ChiKind.P123 <= action.chi_kind <= ChiKind.P789:
+#                     P_idx = action.chi_kind - ChiKind.P123
+#                     diff = action.steal_tile.tile_kind - TileKind.P2 - (action.chi_kind - ChiKind.P123) + 1
+#                     v.add(cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff)
+#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, P_idx: {P_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff}")
+#                 elif ChiKind.S123 <= action.chi_kind <= ChiKind.S789:
+#                     S_idx = action.chi_kind - ChiKind.S123
+#                     diff = action.steal_tile.tile_kind - TileKind.S2 - (action.chi_kind - ChiKind.S123) + 1
+#                     v.add(cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff)
+#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, S_idx: {S_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff}")
+#             case ActionKind.PON:
+#                 v.add(cls.PON_KIND+action.pon_kind)
+#             case ActionKind.KAN_OPEN:
+#                 v.add(cls.KAN_OPEN_KIND+action.kan_kind)
+#             case ActionKind.KAN_CLOSE:
+#                 v.add(cls.KAN_CLOSE_KIND+action.kan_kind)
+#             case ActionKind.KAN_ADD:
+#                 v.add(cls.KAN_ADD_KIND+action.kan_kind)
+#             case ActionKind.TSUMO:
+#                 v.add(cls.TSUMO_TILE+action.tsumo_tile.tile_kind)
+#             case ActionKind.RON:
+#                 v.add(cls.RON_TILE+action.ron_tile.tile_kind)
+#             case ActionKind.RIICHI:
+#                 pass
+#             case ActionKind.DRAW:
+#                 pass
+#             case ActionKind.NO:
+#                 pass
+
+#         return v
