@@ -14,9 +14,25 @@ from mjx.action import Action as MjxAction
 from mjx.observation import Observation as MjxObservation
 from mjx.agents import ShantenAgent as MjxShantenAgent
 
-from board import Board, Action, ActionKind, TileKind, Tile, Relation
+from board import Board, Action, ActionKind, TileKind, Tile, Relation, ChiKind
 from feature import FeatureVector, BoardFeature, DiscardActionFeature, OptionalActionFeature
 from model import Model
+
+@unique
+class OptionalActionKind(IntEnum):
+    CHI_LEFT = 0
+    CHI_MIDDLE = 1
+    CHI_RIGHT = 2
+    PON = 3
+    KAN_OPEN = 4
+    KAN_CLOSE = 5
+    KAN_ADD = 6
+    TSUMO = 7
+    RON = 8
+    RIICHI = 9
+    DRAW = 10
+    NO = 11
+    SIZE = 12
 
 @unique
 class DataType(IntEnum):
@@ -48,54 +64,6 @@ class DiscardTrainingData:
         self.yaku_label = yaku_label
         self.policy_label = policy_label
         self.score_label = score_label
-    
-    # def to_bytes(self):
-    #     b = struct.pack("H", len(self.board_vector))
-    #     for idx in self.board_vector.get_indexes():
-    #         b += struct.pack("H", idx)
-    #     b += struct.pack("H", len(self.action_vector))
-    #     for idx in self.action_vector.get_indexes():
-    #         b += struct.pack("H", idx)
-    #     b += struct.pack("d", self.value_inferred)
-    #     b += struct.pack("H", len(self.discard_inferred))
-    #     for val in self.discard_inferred:
-    #         b += struct.pack("d", val)
-    #     b += struct.pack("H", self.discard_index)
-    #     b += struct.pack("H", len(self.valid_mask))
-    #     for val in self.valid_mask:
-    #         b += struct.pack("?", val)
-    #     b += struct.pack("d", self.value_label)
-    #     b += struct.pack("H", len(self.yaku_label))
-    #     for lab in self.yaku_label:
-    #         b += struct.pack("?", lab)
-    #     b += struct.pack("d", self.policy_label)
-    #     b += struct.pack("H", len(self.score_label))
-    #     for val in self.score_label:
-    #         b += struct.pack("d", val)
-    #     return b
-
-    # @classmethod
-    # def from_bytes(
-    #     cls,
-    #     buffer: BytesIO
-    # ):
-    #     len_bv, = struct.unpack("H", buffer.read(2))
-    #     board_vector = FeatureVector([struct.unpack("H", buffer.read(2))[0] for _ in range(len_bv)])
-    #     len_av, = struct.unpack("H", buffer.read(2))
-    #     action_vector = FeatureVector([struct.unpack("H", buffer.read(2))[0] for _ in range(len_av)])
-    #     value_inferred, = struct.unpack("d", buffer.read(8))
-    #     len_di, = struct.unpack("H", buffer.read(2))
-    #     discard_inferred = [struct.unpack("d", buffer.read(8))[0] for _ in range(len_di)]
-    #     discard_index, = struct.unpack("H", buffer.read(2))
-    #     len_vm, = struct.unpack("H", buffer.read(2))
-    #     valid_mask = [struct.unpack("?", buffer.read(1))[0] for _ in range(len_vm)]
-    #     value_label, = struct.unpack("d", buffer.read(8))
-    #     len_yl, = struct.unpack("H", buffer.read(2))
-    #     yaku_label = [struct.unpack("?", buffer.read(1))[0] for _ in range(len_yl)]
-    #     policy_label, = struct.unpack("d", buffer.read(8))
-    #     len_sl, = struct.unpack("H", buffer.read(2))
-    #     score_label = [struct.unpack("d", buffer.read(8))[0] for _ in range(len_sl)]
-    #     return cls(board_vector, action_vector, value_inferred, discard_inferred, discard_index, valid_mask, value_label, yaku_label, policy_label, score_label)
 
 class OptionalTrainingData:
     def __init__(
@@ -103,6 +71,9 @@ class OptionalTrainingData:
         board_vector: FeatureVector,
         action_vector: FeatureVector,
         value_inferred: float,
+        optional_inferred: list[float],
+        optional_index: int,
+        valid_mask: list[float],
         value_label: float = None,
         yaku_label: list[bool] = None,
         policy_label: float = None,
@@ -112,46 +83,13 @@ class OptionalTrainingData:
         self.board_vector = board_vector
         self.action_vector = action_vector
         self.value_inferred = value_inferred
+        self.optional_inferred = optional_inferred
+        self.optional_index = optional_index
+        self.valid_mask = valid_mask
         self.value_label = value_label
         self.yaku_label = yaku_label
         self.policy_label = policy_label
         self.score_label = score_label
-    
-    # def to_bytes(self):
-    #     b = struct.pack("H", len(self.board_vector))
-    #     for idx in self.board_vector.get_indexes():
-    #         b += struct.pack("H", idx)
-    #     b += struct.pack("H", len(self.action_vector))
-    #     for idx in self.action_vector.get_indexes():
-    #         b += struct.pack("H", idx)
-    #     b += struct.pack("d", self.value_inferred)
-    #     b += struct.pack("d", self.value_label)
-    #     b += struct.pack("H", len(self.yaku_label))
-    #     for lab in self.yaku_label:
-    #         b += struct.pack("?", lab)
-    #     b += struct.pack("d", self.policy_label)
-    #     b += struct.pack("H", len(self.score_label))
-    #     for val in self.score_label:
-    #         b += struct.pack("d", val)
-    #     return b
-
-    # @classmethod
-    # def from_bytes(
-    #     cls,
-    #     buffer: BytesIO
-    # ):
-    #     len_bv, = struct.unpack("H", buffer.read(2))
-    #     board_vector = FeatureVector([struct.unpack("H", buffer.read(2))[0] for _ in range(len_bv)])
-    #     len_av, = struct.unpack("H", buffer.read(2))
-    #     action_vector = FeatureVector([struct.unpack("H", buffer.read(2))[0] for _ in range(len_av)])
-    #     value_inferred, = struct.unpack("d", buffer.read(8))
-    #     value_label, = struct.unpack("d", buffer.read(8))
-    #     len_yl, = struct.unpack("H", buffer.read(2))
-    #     yaku_label = [struct.unpack("?", buffer.read(1))[0] for _ in range(len_yl)]
-    #     policy_label, = struct.unpack("d", buffer.read(8))
-    #     len_sl, = struct.unpack("H", buffer.read(2))
-    #     score_label = [struct.unpack("d", buffer.read(8))[0] for _ in range(len_sl)]
-    #     return cls(board_vector, action_vector, value_inferred, value_label, yaku_label, policy_label, score_label)
 
 class Dataset:
     def __init__(
@@ -176,14 +114,6 @@ class Dataset:
     
     def get_data(self):
         return self.data
-
-    # def export(
-    #     self,
-    #     file_path: str
-    # ):
-    #     b = b"".join([td.to_bytes() for td in self.data])
-    #     with open(file_path, "wb") as f:
-    #         f.write(b)
 
     def split(
         self,
@@ -347,21 +277,27 @@ class OptionalDataset(Dataset):
     def make_inputs(self):
         board_indexes, board_offsets = [], []
         action_indexes, action_offsets = [], []
+        valid_masks = []
         for entry in self.data:
             board_offsets.append(len(board_indexes))
             action_offsets.append(len(action_indexes))
             board_indexes += entry.board_vector.get_indexes()
             action_indexes += entry.action_vector.get_indexes()
-        return board_indexes, board_offsets, action_indexes, action_offsets
+            valid_masks.append(entry.valid_mask)
+        return board_indexes, board_offsets, action_indexes, action_offsets, valid_masks
 
-    def make_labels(self):
-        value_labels, yaku_labels, policy_labels, score_labels = [], [], [], []
-        for entry in self.data:
+    def make_labels(self, valid_masks):
+        value_labels, yaku_labels, optional_idxes, policy_labels, score_labels = [], [], [], [], []
+        for entry, mask in zip(self.data, valid_masks):
+            valids = [idx for idx in range(len(mask)) if mask[idx]]
             value_labels.append(entry.value_label)
             yaku_labels.append(self.make_yaku_labels([1 if flag else 0 for flag in entry.yaku_label]))
-            policy_labels.append(entry.policy_label)
+            optional_idxes.append(entry.optional_index)
+
+            policy_labels.append(entry.policy_label if entry.policy_label >= 0 else entry.policy_label * 0.3)
+
             score_labels.append(entry.score_label)
-        return value_labels, yaku_labels, policy_labels, score_labels
+        return value_labels, yaku_labels, optional_idxes, policy_labels, score_labels
 
     def split(
         self,
@@ -432,34 +368,14 @@ class Episode(Dataset):
             if entry.data_type == DataType.DISCARD:     # DISCARD
                 entry.policy_label = policy
                 # entry.policy_label = reward
+                # print(f"D next: {next_full_value}, label: {entry.value_label}, inferred: {entry.value_inferred}, policy: {policy}, selected: {entry.discard_index}")
             elif entry.data_type == DataType.OPTIONAL:  # OPTIONAL
                 entry.policy_label = policy
                 # entry.policy_label = reward
+                # print(f"O next: {next_full_value}, label: {entry.value_label}, inferred: {entry.value_inferred}, policy: {policy}, selected: {OptionalActionKind(entry.optional_index).name}")
             else:
                 Exception("unexpected data type")
             next_game_value = next_game_value * self.DISCOUNT_RATE + entry.value_inferred * (1.0 - self.DISCOUNT_RATE)
-
-    # def result(
-    #     self,
-    #     reward: int,
-    #     yaku: list[bool],
-    #     score_diffs: list[int]
-    # ):
-    #     next_value = reward
-    #     for entry in reversed(self.data):
-    #         entry.value_label = (next_value + entry.value_inferred) / 2.0 * (1.0 - self.RESULT_RATE) + reward * self.RESULT_RATE
-    #         entry.yaku_label = yaku
-    #         entry.score_label = [diff / 24000.0 for diff in score_diffs]
-    #         if entry.data_type == DataType.DISCARD: # DISCARD
-    #             policy = max(self.POLICY_MIN, min(next_value - entry.value_inferred, self.POLICY_MAX))
-    #             entry.policy_label = policy
-    #             # entry.policy_label = reward
-    #         else:                                   # OPTIONAL
-    #             policy = max(self.POLICY_MIN, min(next_value - entry.value_inferred, self.POLICY_MAX))
-    #             entry.policy_label = policy
-    #             # entry.policy_label = reward
-    #         next_value = next_value * self.DISCOUNT_RATE + entry.value_inferred * (1.0 - self.DISCOUNT_RATE)
-    #         # print(entry.value_inferred, next_value)
 
 class BaseInferred:
     def __init__(
@@ -506,30 +422,12 @@ class DiscardInferred:
         self.probs = probs
         self.selected_idx = None    # self.select()で最後に選択された牌のindex
 
-    # def get_illegal_indexes(
-    #     self
-    # ):
-    #     # 手牌にない牌のindexのリストを返す
-    #     tiles = [Tile.from_mjx(mjx_action.tile()) for mjx_action in self.mjx_actions]
-    #     legal = [tile.tile_kind for tile in tiles]
-    #     return [idx for idx in range(34) if idx not in legal]
-
     def set_selected(
         self,
         action: Action
     ):
         # 学習用、selectedを直接セットする
         self.selected_idx = action.discard_tile.tile_kind
-
-    # def softmax(
-    #     self,
-    #     out: list[float],
-    #     temperature: float = 1.0
-    # ):
-    #     x = np.array(out)
-    #     exp_x = np.exp(x / temperature)
-    #     probs = exp_x / np.sum(exp_x)
-    #     return probs.tolist()
 
     def select(
         self,
@@ -566,46 +464,130 @@ class DiscardInferred:
         return mjx_action
 
     def __repr__(self):
-        def mark_val(idx, val, legal, effective):
-            marked = "{:.5f}".format(val)
-            if idx in effective:
-                marked = f"*{marked}*"
-            if idx in legal:
-                marked = f"[{marked}]"
-            return marked
-        temperature = 1.0
         actions = [Action.from_mjx(mjx_action, self.board) for mjx_action in self.mjx_actions]
-        legal = [action.discard_tile.tile_kind for action in actions]
         policies = sorted([(TileKind(idx).name, val) for idx, val in enumerate(self.probs) if val > 0.0001], reverse=True, key=lambda x:x[1])
-        string = "{" + f"value: {self.value}, temp: {temperature}, probs: {policies}" + "}"
+        string = "Discard: {" + f"value: {self.value}, probs: {policies}" + "}"
         return string
 
 class OptionalInferred:
+
     def __init__(
         self,
         board: Board,
         board_vector: FeatureVector,
-        mjx_action: MjxAction,
         action_vector: FeatureVector,
+        valid_mask: list[bool],
+        mjx_actions: list[MjxAction],
         value: float,
         yaku: list[float],
-        policy: float
+        optional: list[float],
+        probs: list[float],
     ):
         if len(yaku) != 3:
             raise Exception("unexpected length of list")
         self.board = board
         self.board_vector = board_vector
+        self.action_vector = action_vector
+        self.valid_mask = valid_mask
         self.value = value
         self.yaku = yaku
-        self.mjx_action = mjx_action
-        self.action_vector = action_vector
-        self.policy = policy
+        self.mjx_actions = mjx_actions
+        self.optional = optional
+        self.probs = probs
+        self.selected_idx = None    # self.select()で最後に選択されたOptionalActionKindのindex
+
+    @classmethod
+    def get_optional_actionkind(
+        cls,
+        action: Action
+    ):
+        kind = action.action_kind
+        if kind is None:
+            raise Exception("unexpected action kind: None")
+        elif kind == ActionKind.DISCARD:
+            raise Exception(f"unexpected action kind: {action.action_kind}")
+        elif kind == ActionKind.CHI:
+            diff = None     # stealが順子の左なら0, 中央なら1, 右なら2
+            if ChiKind.M123 <= action.chi_kind <= ChiKind.M789:
+                M_idx = action.chi_kind - ChiKind.M123
+                diff = action.steal_tile.tile_kind - TileKind.M2 - (action.chi_kind - ChiKind.M123) + 1
+            elif ChiKind.P123 <= action.chi_kind <= ChiKind.P789:
+                P_idx = action.chi_kind - ChiKind.P123
+                diff = action.steal_tile.tile_kind - TileKind.P2 - (action.chi_kind - ChiKind.P123) + 1
+            elif ChiKind.S123 <= action.chi_kind <= ChiKind.S789:
+                S_idx = action.chi_kind - ChiKind.S123
+                diff = action.steal_tile.tile_kind - TileKind.S2 - (action.chi_kind - ChiKind.S123) + 1
+            return OptionalActionKind.CHI_LEFT + diff
+        elif kind == ActionKind.PON:
+            return OptionalActionKind.PON
+        elif kind == ActionKind.KAN_OPEN:
+            return OptionalActionKind.KAN_OPEN
+        elif kind == ActionKind.KAN_CLOSE:
+            return OptionalActionKind.KAN_CLOSE
+        elif kind == ActionKind.KAN_ADD:
+            return OptionalActionKind.KAN_ADD
+        elif kind == ActionKind.TSUMO:
+            return OptionalActionKind.TSUMO
+        elif kind == ActionKind.RON:
+            return OptionalActionKind.RON
+        elif kind == ActionKind.RIICHI:
+            return OptionalActionKind.RIICHI
+        elif kind == ActionKind.DRAW:
+            return OptionalActionKind.DRAW
+        elif kind == ActionKind.NO:
+            return OptionalActionKind.NO
+        else:
+            raise Exception("unexpected action kind")
+
+    def set_selected_kind(
+        self,
+        kind: OptionalActionKind
+    ):
+        self.selected_idx = kind
+
+    def set_selected(
+        self,
+        action: Action
+    ):
+        # 学習用、selectedを直接セットする
+        kind = self.get_optional_actionkind(action)
+        self.set_selected_kind(kind)
+    
+    def select(
+        self,
+        temperature: float = None
+    ):
+        # 可能なアクションだけのlistを作る
+        table = [None for _ in range(OptionalActionKind.SIZE)]
+        # TODO: 同じアクション同士で優先度をつける
+        for mjx_action in self.mjx_actions:
+            action = Action.from_mjx(mjx_action, self.board)
+            kind = self.get_optional_actionkind(action)
+            table[kind] = mjx_action
+
+        actionlist, out, probs = [], [], []
+        for idx, mjx_action in enumerate(table):
+            if idx != OptionalActionKind.NO and mjx_action is None:
+                continue
+            actionlist.append((idx, mjx_action))
+            out.append(self.optional[idx])
+            probs.append(self.probs[idx])
+
+        # 温度がNoneなら最大値を返す
+        if temperature == None:
+            idx, mjx_action = actionlist[out.index(max(out))]
+            self.selected_idx = idx
+            return mjx_action
+        
+        # selectedに選んだindexを入れる
+        idx, mjx_action = random.choices(actionlist, k=1, weights=probs)[0]
+        self.selected_idx = idx
+        return mjx_action
 
     def __repr__(self):
-        if self.mjx_action is None:
-            return f"Action: no, value: {self.value}, policy: {self.policy}"
-        action = Action.from_mjx(self.mjx_action, self.board)
-        string = "{" + f"Action: \"{action}\", value: {self.value}, policy: {self.policy}" + "}"
+        actions = [Action.from_mjx(mjx_action, self.board) for mjx_action in self.mjx_actions]
+        policies = sorted([(OptionalActionKind(idx).name, val) for idx, val in enumerate(self.probs) if val > 0.0001], reverse=True, key=lambda x:x[1])
+        string = "Optional: {" + f"value: {self.value}, probs: {policies}" + "}"
         return string
 
 class Trainer:
@@ -629,7 +611,9 @@ class Trainer:
         self,
         inferred: OptionalInferred
     ):
-        training_data = OptionalTrainingData(inferred.board_vector, inferred.action_vector, inferred.value)
+        if inferred.selected_idx is None:
+            raise Exception("selected_idx is None")
+        training_data = OptionalTrainingData(inferred.board_vector, inferred.action_vector, inferred.value, inferred.optional, inferred.selected_idx, inferred.valid_mask)
         self.current_episode.add(training_data)
 
     def end_round(
@@ -647,16 +631,6 @@ class Trainer:
         self.current_episode.set_game_result([1.0, 0.3, -0.3, -1.0][final_rank - 1])
         self.episodes.append(self.current_episode)
         self.current_episode = Episode()
-
-    # def end(
-    #     self,
-    #     score_diffs: list[int],
-    #     rank: int,
-    #     yaku: list[bool]
-    # ):
-    #     self.current_episode.result([1.0, 0.5, -0.5, -1.0][rank - 1], yaku, score_diffs)
-    #     self.episodes.append(self.current_episode)
-    #     self.current_episode = Episode()
 
     def export(
         self,
@@ -681,7 +655,6 @@ class Trainer:
         while size - idx >= file_size:
             r = random.getrandbits(64)
             dataset = Dataset(discard[idx:idx+file_size])
-            # dataset.export(os.path.join(dir_path, f"discard_{self.discard_bin_idx}/data_{r}.dat"))
             with open(os.path.join(dir_path, f"discard_{self.discard_bin_idx}/data_{r}.pkl"), "wb") as f:
                 pickle.dump(dataset, f)
             idx += file_size
@@ -692,7 +665,6 @@ class Trainer:
         while size - idx >= file_size:
             r = random.getrandbits(64)
             dataset = Dataset(optional[idx:idx+file_size])
-            # dataset.export(os.path.join(dir_path, f"optional_{self.optional_bin_idx}/data_{r}.dat"))
             with open(os.path.join(dir_path, f"optional_{self.optional_bin_idx}/data_{r}.pkl"), "wb") as f:
                 pickle.dump(dataset, f)
             idx += file_size
@@ -710,51 +682,6 @@ class Trainer:
     ):
         reward = result / 24000
         return reward
-
-    # @staticmethod
-    # def calc_reward(
-    #     result: int
-    # ):
-    #     if result == 0:  # 点数移動なし
-    #         return -0.1
-    #     elif result > 0: # 収支プラス
-    #         if result >= 48000:
-    #             return 1.0
-    #         elif result >= 32000:
-    #             return 0.95
-    #         elif result >= 24000:
-    #             return 0.9
-    #         elif result >= 16000:
-    #             return 0.85
-    #         elif result >= 12000:
-    #             return 0.8
-    #         elif result >= 8000:
-    #             return 0.7
-    #         elif result >= 4000:
-    #             return 0.6
-    #         elif result >= 2000:
-    #             return 0.5
-    #         else:
-    #             return 0.4
-    #     else:           # 収支マイナス
-    #         if result <= -48000:
-    #             return -1.0
-    #         elif result <= -32000:
-    #             return -0.95
-    #         elif result <= -24000:
-    #             return -0.9
-    #         elif result <= -16000:
-    #             return -0.8
-    #         elif result <= -12000:
-    #             return -0.7
-    #         elif result <= -8000:
-    #             return -0.6
-    #         elif result <= -4000:
-    #             return -0.5
-    #         elif result <= -2000:
-    #             return -0.3
-    #         else:
-    #             return -0.2
 
 class Evaluator:
     MAX_BATTLE = 100
@@ -783,13 +710,13 @@ class Evaluator:
         return self.score_sum / len(self.games), self.rank_sum / len(self.games)
 
 class Actor(MjxAgent):
-    MODE = 1
     LOG_FILE = None
 
     def __init__(
         self,
         model: Model,
-        temperature: float = None   # 引数なしでランダム性なし
+        temperature: float = None,  # 引数なしでランダム性なし
+        no_furo: bool = False       # Trueで副露（ポン、チー、大明槓、加槓）なし
         ) -> None:
         super().__init__()
         self.evaluator = Evaluator()
@@ -797,6 +724,7 @@ class Actor(MjxAgent):
         self.temperature = temperature
         self.model = model
         self.model.eval()
+        self.no_furo = no_furo
 
     def softmax(
         self,
@@ -829,10 +757,7 @@ class Actor(MjxAgent):
         if len(legal_actions) >= 1 and legal_actions[0].type() == mjx.ActionType.DUMMY:
             return legal_actions[0]
 
-        if self.MODE == 1:
-            return self._inner_act(observation)
-        else:
-            return self._inner_act2(observation)
+        return self._inner_act(observation)
     
     def check(
         self,
@@ -844,12 +769,8 @@ class Actor(MjxAgent):
         if len(legal_actions) >= 1 and legal_actions[0].type() == mjx.ActionType.DUMMY:
             print("DUMMY")
             return legal_actions[0]
-        
-        if self.MODE == 1:
-            return self._inner_act(observation, dump=True)
-        else:
-            return self._inner_act2(observation)
 
+        return self._inner_act(observation, dump=True)
 
     def _infer_discard(
         self,
@@ -878,11 +799,9 @@ class Actor(MjxAgent):
         action_offsets = torch.LongTensor(action_offsets)
 
         valid_mask = [False for _ in range(34)]
-        valids = []
         for mjx_action in mjx_actions:
             action = Action.from_mjx(mjx_action, board)
             valid_mask[action.discard_tile.tile_kind] = True
-            valids.append(action.discard_tile.tile_kind)  # 
         valid_masks.append(valid_mask)
         valid_masks = torch.tensor(valid_masks, dtype=torch.bool)
 
@@ -900,46 +819,41 @@ class Actor(MjxAgent):
         self,
         observation: MjxObservation,
         mjx_actions: list[MjxAction],
-        no: bool = False    # NOがないとき、NOを追加する
-        ):
-
-        add_no = no
+    ):
         board_indexes, board_offsets, action_indexes, action_offsets = [], [], [], []
         board_vectors, action_vectors = [], []
+        valid_masks = []
 
         board = Board.from_mjx(observation)
+        actions = [Action.from_mjx(mjx_action, board) for mjx_action in mjx_actions]
         board_vector = BoardFeature.make(board)
+        action_vector = OptionalActionFeature.make(actions, board)
 
-        for mjx_action in mjx_actions:
-            action = Action.from_mjx(mjx_action, board)
-            action_vector = OptionalActionFeature.make(action, board)
-            action_offsets.append(len(action_indexes))
-            action_indexes += action_vector.get_indexes()
-            action_vectors.append(action_vector)
-            if action.action_kind == ActionKind.NO:
-                add_no = False
-        if add_no:
-            mjx_actions.append(None)
-            action = Action.no()
-            action_vector = OptionalActionFeature.make(action, board)
-            action_offsets.append(len(action_indexes))
-            action_indexes += action_vector.get_indexes()
-            action_vectors.append(action_vector)
-            add_no = False
-
-        for _ in zip(action_offsets, action_vectors, strict=True):
-            board_offsets.append(len(board_indexes))
-            board_indexes += board_vector.get_indexes()
-            board_vectors.append(board_vector)
+        board_vectors.append(board_vector)
+        board_offsets.append(len(board_indexes))
+        board_indexes += board_vector.get_indexes()
+        action_vectors.append(action_vector)
+        action_offsets.append(len(action_indexes))
+        action_indexes += action_vector.get_indexes()
 
         board_indexes = torch.LongTensor(board_indexes)
         board_offsets = torch.LongTensor(board_offsets)
         action_indexes = torch.LongTensor(action_indexes)
         action_offsets = torch.LongTensor(action_offsets)
 
-        value, yaku, policy, score = self.model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
+        valid_mask = [False for _ in range(OptionalActionKind.SIZE)]
+        for action, mjx_action in zip(actions, mjx_actions):
+            kind = OptionalInferred.get_optional_actionkind(action)
+            valid_mask[kind] = True
+        valid_mask[OptionalActionKind.NO] = True   # NOは常にできる想定
 
-        inferred = [OptionalInferred(board, board_vector, mjx_action, action_vector, v[0], y, p[0]) for mjx_action, action_vector, v, y, p in zip(mjx_actions, action_vectors, value.tolist(), yaku.tolist(), policy.tolist(), strict=True)]
+        valid_masks.append(valid_mask)
+        valid_masks = torch.tensor(valid_masks, dtype=torch.bool)
+
+        value, yaku, optional, score = self.model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets, valid_masks)
+        probs = torch.nn.functional.softmax(optional, dim=-1)
+
+        inferred = OptionalInferred(board, board_vector, action_vector, valid_mask, mjx_actions, value.tolist()[0][0], yaku.tolist()[0], optional.tolist()[0], probs.tolist()[0])
 
         if self.LOG_FILE is not None:
             self.dump(self.LOG_FILE, f"{inferred}")
@@ -960,30 +874,26 @@ class Actor(MjxAgent):
                 discard_actions.append(mjx_action)
             else:
                 optional_actions.append(mjx_action)
-        can_discard = len(discard_actions) > 0
 
         # 打牌以外を推論する
         if len(optional_actions) > 0:
-            optional_inferred = sorted(self._infer_optional(observation, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
-            if dump:
-                print(optional_inferred)
-            
-            optional = None
-            if self.temperature == None:    # 最善手を選ぶ
-                optional = optional_inferred[0]
-            else:
-                probabilities = self.softmax(optional_inferred)
-                optional = random.choices(optional_inferred, k=1, weights=probabilities)[0]
+            optional_inferred = self._infer_optional(observation, optional_actions)
+            optional_mjx_action = optional_inferred.select(self.temperature)
 
-            if optional.mjx_action is None:
-                # NOかつdiscardに進む場合
-                if not can_discard:
-                    raise Exception("mjx_action is None")
-                self.trainer.add_optional(optional)
-            else:
-                # 選んだactionを返す場合
-                self.trainer.add_optional(optional)
-                return optional.mjx_action
+            if self.no_furo:    # 副露禁止のとき
+                selected = OptionalActionKind(optional_inferred.selected_idx)
+                if selected in [OptionalActionKind.CHI_LEFT, OptionalActionKind.CHI_MIDDLE, OptionalActionKind.CHI_RIGHT, OptionalActionKind.PON, OptionalActionKind.KAN_ADD, OptionalActionKind.KAN_OPEN]:
+                    optional_inferred.set_selected_kind(OptionalActionKind.NO)
+                    for mjx_action in optional_actions:
+                        if mjx_action.to_idx() == 179:
+                            return mjx_action
+                    else:
+                        optional_mjx_action = None
+
+            self.trainer.add_optional(optional_inferred)
+
+            if optional_mjx_action is not None: # 選んだactionを返す場合(打牌に遷移しない場合)
+                return optional_mjx_action
 
         # 打牌を推論する
         discard_inferred = self._infer_discard(observation, discard_actions)
@@ -991,27 +901,9 @@ class Actor(MjxAgent):
             print(discard_inferred.board.players[0].hand)
             print(discard_inferred.board.effective_discard)
             print(discard_inferred)
-        mjx_action = discard_inferred.select(self.temperature)
+        discard_mjx_action = discard_inferred.select(self.temperature)
         self.trainer.add_discard(discard_inferred)
-        return mjx_action
-
-    def _inner_act2(
-        self,
-        observation: MjxObservation,
-        dump: bool = False
-        ):
-
-        all_actions = [mjx_action for mjx_action in observation.legal_actions()]
-        inferred = sorted(self._infer_optional(observation, all_actions, no=False), key=lambda x:x.policy, reverse=True)
-
-        if self.temperature == None:    # 最善手を選ぶ
-            selected = inferred[0]
-        else:
-            probabilities = self.softmax(inferred)
-            selected = random.choices(inferred, k=1, weights=probabilities)[0]
-
-        self.trainer.add_optional(selected)
-        return selected.mjx_action
+        return discard_mjx_action
 
     def export(
         self,
@@ -1048,67 +940,6 @@ class Actor(MjxAgent):
     ):
         _, rank = self.evaluator.get_moving_average()
         return rank
-
-class ShantenActor(Actor):
-    def __init__(
-        self,
-        model: Model
-        ) -> None:
-        super().__init__(model)
-        self.mjx_agent = MjxShantenAgent()
-
-    def _inner_act(
-        self,
-        observation: MjxObservation
-        ) -> MjxAction:
-        # MjxShantenAgentは副露できるときは必ず副露する
-        mjx_selected = self.mjx_agent.act(observation)
-
-        # 打牌とそれ以外のアクションを分ける
-        discard_actions, optional_actions = [], []  # mjxのアクション
-        board = Board.from_mjx(observation)
-        for mjx_action in observation.legal_actions():
-            if mjx_action.to_idx() <= 73:   # 打牌
-                discard_actions.append(mjx_action)
-            else:
-                optional_actions.append(mjx_action)
-        can_discard = len(discard_actions) > 0
-
-        selected = Action.from_mjx(mjx_selected, board)
-        
-        # 打牌以外を推論する
-        if len(optional_actions) > 0:
-            optional_inferred = sorted(self._infer_optional(observation, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
-
-            for entry in optional_inferred:
-                if entry.mjx_action is None:
-                    if selected.action_kind == ActionKind.DISCARD:
-                        self.trainer.add_optional(entry)
-                        break
-                elif entry.mjx_action == mjx_selected:
-                    self.trainer.add_optional(entry)
-                    return mjx_selected
-
-        # 打牌を推論する
-        discard_inferred = self._infer_discard(observation, discard_actions)
-        discard_inferred.set_selected(selected)
-        self.trainer.add_discard(discard_inferred)
-        return mjx_selected
-
-    def _inner_act2(
-        self,
-        observation: MjxObservation,
-        dump: bool = False
-        ):
-
-        selected = self.mjx_agent.act(observation)
-        all_actions = [mjx_action for mjx_action in observation.legal_actions()]
-        inferred = self._infer_optional(observation, all_actions, no=False)
-
-        for entry in inferred:
-            if entry.mjx_action == selected:
-                self.trainer.add_optional(entry)
-                return entry.mjx_action
 
 class MenzenActor(Actor):
     def __init__(
@@ -1164,16 +995,13 @@ class MenzenActor(Actor):
         
         # 打牌以外を推論する
         if len(optional_actions) > 0:
-            optional_inferred = sorted(self._infer_optional(observation, optional_actions, no=can_discard), key=lambda x:x.policy, reverse=True)
-
-            for entry in optional_inferred:
-                if entry.mjx_action is None:
-                    if selected.action_kind == ActionKind.DISCARD:
-                        self.trainer.add_optional(entry)
-                        break
-                elif entry.mjx_action == mjx_selected:
-                    self.trainer.add_optional(entry)
-                    return mjx_selected
+            optional_inferred = self._infer_optional(observation, optional_actions)
+            if selected.action_kind == ActionKind.DISCARD:
+                optional_inferred.set_selected_kind(OptionalActionKind.NO)
+            else:
+                optional_inferred.set_selected(selected)
+                return mjx_selected
+            self.trainer.add_optional(optional_inferred)
 
         # 打牌を推論する
         discard_inferred = self._infer_discard(observation, discard_actions)
@@ -1181,17 +1009,16 @@ class MenzenActor(Actor):
         self.trainer.add_discard(discard_inferred)
         return mjx_selected
 
-    def _inner_act2(
+class ShantenActor(MenzenActor):
+    def __init__(
         self,
-        observation: MjxObservation,
-        dump: bool = False
-        ):
+        model: Model
+        ) -> None:
+        super().__init__(model)
+        self.mjx_agent = MjxShantenAgent()
 
-        selected = self._select_mjx_action(observation)
-        all_actions = [mjx_action for mjx_action in observation.legal_actions()]
-        inferred = self._infer_optional(observation, all_actions, no=False)
-
-        for entry in inferred:
-            if entry.mjx_action == selected:
-                self.trainer.add_optional(entry)
-                return entry.mjx_action
+    def _selected_mjx_action(
+        self,
+        observation: MjxObservation
+    ) -> MjxAction:
+        return self.mjx_agent.act(observation)

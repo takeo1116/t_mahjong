@@ -58,7 +58,7 @@ def lr_schedule(learned_data, datatype):
     if datatype == DataType.DISCARD:
         return 1e-5
     elif datatype == DataType.OPTIONAL:
-        return 1e-4
+        return 1e-5
     else:
         return 1.0
 
@@ -115,53 +115,55 @@ def main():
             
             datasets = fulldataset.split(LearningConstants.BATCH_SIZE)
 
-            value_loss_sum, yaku_loss_sum, policy_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
+            value_loss_sum, yaku_loss_sum, optional_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
             loss_sum, loss_count = 0.0, 0
             grad_norm = 0.0
 
             for data in datasets:
                 optimizer.zero_grad()
 
-                board_indexes, board_offsets, action_indexes, action_offsets = data.make_inputs()
+                board_indexes, board_offsets, action_indexes, action_offsets, valid_masks = data.make_inputs()
                 board_indexes = torch.LongTensor(board_indexes).to(device)
                 board_offsets = torch.LongTensor(board_offsets).to(device)
                 action_indexes = torch.LongTensor(action_indexes).to(device)
                 action_offsets = torch.LongTensor(action_offsets).to(device)
-                value_labels, yaku_labels, policy_labels, score_labels = data.make_labels()
+                valid_tensor = torch.tensor(valid_masks, dtype=torch.bool)
 
+                value_labels, yaku_labels, optional_idxes, policy_labels, score_labels = data.make_labels(valid_masks)
                 value_labels = torch.FloatTensor([[v] for v in value_labels]).to(device)
                 yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(device)
-                policy_labels = torch.FloatTensor([[p] for p in policy_labels]).to(device)
+                optional_idxes = torch.LongTensor([o for o in optional_idxes]).to(device)
+                policy_labels = torch.FloatTensor([p for p in policy_labels]).to(device)
                 score_labels = torch.FloatTensor([ss for ss in score_labels]).to(device)
 
-                value, yaku, policy, score = model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
-
+                value, yaku, optional, score = model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets, valid_tensor)
                 value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
                 yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
-                policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="sum", delta=0.2)
                 score_loss = torch.nn.functional.huber_loss(score, score_labels, reduction="sum")
+                optional_loss = torch.nn.functional.cross_entropy(optional, optional_idxes, reduction="none")
+                optional_loss *= policy_labels
+                optional_loss = optional_loss.sum()
 
-                value_loss /= 1.0
+                value_loss /= 0.5
                 yaku_loss /= 30.0
-                policy_loss /= 0.4
+                optional_loss /= 1.0
                 score_loss /= 5.0
                 value_loss_sum += value_loss
                 yaku_loss_sum += yaku_loss
-                policy_loss_sum += policy_loss
+                optional_loss_sum += optional_loss
                 score_loss_sum += score_loss
 
-                loss = value_loss + yaku_loss + policy_loss + score_loss
-
+                loss = value_loss + yaku_loss + optional_loss + score_loss
                 loss_count += len(data)
                 learned_optional_data += len(data)
 
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), 3000.0)
+                nn.utils.clip_grad_norm_(model.parameters(), 1000)
                 grad_norm = get_grad_norm(model)
                 optimizer.step()
 
             if loss_count > 0:
-                print(f"OPTIONAL:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, score_loss: {score_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
+                print(f"OPTIONAL:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, optional_loss: {optional_loss_sum / loss_count}, score_loss: {score_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
 
             for file in files:
                 r = random.random()

@@ -426,74 +426,56 @@ class DiscardActionFeature:
         return v
 
 class OptionalActionFeature:
-    ACTION_KIND = 0
-    CHI_KIND = ACTION_KIND + ActionKind.SIZE
-    PON_KIND = CHI_KIND + ChiKind.SIZE * 3
-    KAN_OPEN_KIND = PON_KIND + TileKind.SIZE
-    KAN_CLOSE_KIND = KAN_OPEN_KIND + TileKind.SIZE
-    KAN_ADD_KIND = KAN_CLOSE_KIND + TileKind.SIZE
-    TSUMO_TILE = KAN_ADD_KIND + TileKind.SIZE
-    RON_TILE = TSUMO_TILE + TileKind.SIZE
-    SIZE = RON_TILE + TileKind.SIZE
+    TARGET = 0
+    RED = TARGET + TileKind.SIZE
+    DORA = RED + 1
+    SIZE = DORA + 1
 
     @classmethod
     def make(
         cls,
-        action: Action,
-        board: Board
+        actions: list[Action],
+        board: Board,
     ):
         v = FeatureVector()
 
-        v.add(cls.ACTION_KIND+action.action_kind)
-        match action.action_kind:
-            case ActionKind.DISCARD:
-                Exception("Unexpected ActionKind(DISCARD)")
+        target = None
+        is_red = False
+        for action in actions:
+            if action.action_kind == ActionKind.DISCARD:
+                Exception("unexpected action kind(DISCARD)")
+            
+            if action.steal_tile is not None:
+                if target is None:
+                    target = action.steal_tile.tile_kind
+                    is_red = action.steal_tile.red
+                elif target != action.steal_tile.tile_kind:
+                    Exception("different steal tile")
+            elif action.kan_kind is not None:
+                if target is None:
+                    target = action.kan_kind
+            elif action.tsumo_tile is not None:
+                if target is None:
+                    target = action.tsumo_tile.tile_kind
+                    is_red = action.tsumo_tile.red
+            elif action.ron_tile is not None:
+                if target is None:
+                    target = action.ron_tile.tile_kind
+                    is_red = action.ron_tile.red
 
-            case ActionKind.CHI:    # (chi, steal) = (M123,M1), (M123, M2), ..., (M789, M9), (P123, P1), ..., (S789, S9)
-                if ChiKind.M123 <= action.chi_kind <= ChiKind.M789:
-                    M_idx = action.chi_kind - ChiKind.M123
-                    diff = action.steal_tile.tile_kind - TileKind.M2 - (action.chi_kind - ChiKind.M123) + 1 # stealが順子の左なら0, 中央なら1, 右なら2
-                    v.add(cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff)
-                elif ChiKind.P123 <= action.chi_kind <= ChiKind.P789:
-                    P_idx = action.chi_kind - ChiKind.P123
-                    diff = action.steal_tile.tile_kind - TileKind.P2 - (action.chi_kind - ChiKind.P123) + 1
-                    v.add(cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff)
-                elif ChiKind.S123 <= action.chi_kind <= ChiKind.S789:
-                    S_idx = action.chi_kind - ChiKind.S123
-                    diff = action.steal_tile.tile_kind - TileKind.S2 - (action.chi_kind - ChiKind.S123) + 1
-                    v.add(cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff)
-            case ActionKind.PON:
-                v.add(cls.PON_KIND+action.pon_kind)
-            case ActionKind.KAN_OPEN:
-                v.add(cls.KAN_OPEN_KIND+action.kan_kind)
-            case ActionKind.KAN_CLOSE:
-                v.add(cls.KAN_CLOSE_KIND+action.kan_kind)
-            case ActionKind.KAN_ADD:
-                v.add(cls.KAN_ADD_KIND+action.kan_kind)
-            case ActionKind.TSUMO:
-                v.add(cls.TSUMO_TILE+action.tsumo_tile.tile_kind)
-            case ActionKind.RON:
-                v.add(cls.RON_TILE+action.ron_tile.tile_kind)
-            case ActionKind.RIICHI:
-                pass
-            case ActionKind.DRAW:
-                pass
-            case ActionKind.NO:
-                pass
+        if target is not None:
+            v.add(cls.TARGET+target)
+        if is_red:
+            v.add(cls.RED)
+        if target in board.doras:
+            v.add(cls.DORA)
 
         return v
+            
 
 # class OptionalActionFeature:
 #     ACTION_KIND = 0
-#     DISCARD_TILE = ACTION_KIND + ActionKind.SIZE
-#     DISCARD_TSUMOGIRI = DISCARD_TILE + TileKind.SIZE
-#     DISCARD_RED = DISCARD_TSUMOGIRI + 1
-#     DISCARD_DORA = DISCARD_RED + 1
-#     DISCARD_EFFECTIVE = DISCARD_DORA + 1
-#     DISCARD_SAFE_SHIMO = DISCARD_EFFECTIVE + 1
-#     DISCARD_SAFE_TOIMEN = DISCARD_SAFE_SHIMO + 1
-#     DISCARD_SAFE_KAMI = DISCARD_SAFE_TOIMEN + 1
-#     CHI_KIND = DISCARD_SAFE_KAMI + 1
+#     CHI_KIND = ACTION_KIND + ActionKind.SIZE
 #     PON_KIND = CHI_KIND + ChiKind.SIZE * 3
 #     KAN_OPEN_KIND = PON_KIND + TileKind.SIZE
 #     KAN_CLOSE_KIND = KAN_OPEN_KIND + TileKind.SIZE
@@ -513,40 +495,21 @@ class OptionalActionFeature:
 #         v.add(cls.ACTION_KIND+action.action_kind)
 #         match action.action_kind:
 #             case ActionKind.DISCARD:
-#                 tile_kind = action.discard_tile.tile_kind
-#                 v.add(cls.DISCARD_TILE+tile_kind)
-#                 if action.discard_tsumogiri:
-#                     v.add(cls.DISCARD_TSUMOGIRI)
-#                 if action.discard_red:
-#                     v.add(cls.DISCARD_RED)
-#                 if action.discard_dora:
-#                     v.add(cls.DISCARD_DORA)
-#                 if action.discard_effective:
-#                     v.add(cls.DISCARD_EFFECTIVE)
-                
-#                 if tile_kind in board.players[1].safe:
-#                     v.add(cls.DISCARD_SAFE_SHIMO)
-#                 if tile_kind in board.players[2].safe:
-#                     v.add(cls.DISCARD_SAFE_TOIMEN)
-#                 if tile_kind in board.players[3].safe:
-#                     v.add(cls.DISCARD_SAFE_KAMI)
+#                 Exception("Unexpected ActionKind(DISCARD)")
 
 #             case ActionKind.CHI:    # (chi, steal) = (M123,M1), (M123, M2), ..., (M789, M9), (P123, P1), ..., (S789, S9)
 #                 if ChiKind.M123 <= action.chi_kind <= ChiKind.M789:
 #                     M_idx = action.chi_kind - ChiKind.M123
 #                     diff = action.steal_tile.tile_kind - TileKind.M2 - (action.chi_kind - ChiKind.M123) + 1 # stealが順子の左なら0, 中央なら1, 右なら2
 #                     v.add(cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff)
-#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, M_idx: {M_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*0 + M_idx*3 + diff}")
 #                 elif ChiKind.P123 <= action.chi_kind <= ChiKind.P789:
 #                     P_idx = action.chi_kind - ChiKind.P123
 #                     diff = action.steal_tile.tile_kind - TileKind.P2 - (action.chi_kind - ChiKind.P123) + 1
 #                     v.add(cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff)
-#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, P_idx: {P_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*1 + P_idx*3 + diff}")
 #                 elif ChiKind.S123 <= action.chi_kind <= ChiKind.S789:
 #                     S_idx = action.chi_kind - ChiKind.S123
 #                     diff = action.steal_tile.tile_kind - TileKind.S2 - (action.chi_kind - ChiKind.S123) + 1
 #                     v.add(cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff)
-#                     # print(f"chi: {action.chi_kind.name}, steal: {action.steal_tile.tile_kind.name}, S_idx: {S_idx}, diff: {diff}, idx: {cls.CHI_KIND + ChiKind.SIZE*2 + S_idx*3 + diff}")
 #             case ActionKind.PON:
 #                 v.add(cls.PON_KIND+action.pon_kind)
 #             case ActionKind.KAN_OPEN:

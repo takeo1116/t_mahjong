@@ -140,22 +140,22 @@ def battle(
         if rule_index == 0:
             agents = [
                 Actor(model),
-                Actor(model, temperature=None),
                 Actor(model, temperature=1.0),
+                Actor(model, temperature=1.0, no_furo=True),
                 ShantenActor(model)
             ]
         elif rule_index == 1:
             agents = [
                 Actor(model),
-                Actor(model, temperature=None),
                 Actor(model, temperature=1.0),
+                Actor(model, temperature=1.0, no_furo=True),
                 MenzenActor(model)
             ]
         else:
             agents = [
                 Actor(model),
                 Actor(model),
-                Actor(model),
+                Actor(model, temperature=1.0),
                 Actor(model, temperature=1.0)
             ]
         # agents = [

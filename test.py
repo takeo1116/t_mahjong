@@ -8,7 +8,7 @@ from feature import BoardFeature, DiscardActionFeature, OptionalActionFeature
 
 
 model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
-model.load_state_dict(torch.load("./learn/model_0_71605000_18715000.pth"))
+model.load_state_dict(torch.load("./learn/model_0_29270000_6130000.pth"))
 
 temperature = 1.0
 
@@ -33,15 +33,22 @@ temperature = 1.0
 #     MenzenActor(model),
 # ]
 
+# agents = [
+#     Actor(model),
+#     Actor(model),
+#     Actor(model),
+#     Actor(model),
+# ]
+
 agents = [
-    Actor(model),
-    Actor(model),
-    Actor(model),
-    Actor(model),
+    Actor(model, temperature=None, no_furo=True),
+    Actor(model, temperature=None, no_furo=True),
+    Actor(model, temperature=None, no_furo=True),
+    Actor(model, temperature=None, no_furo=True),
 ]
 
 game = SingleGame(agents)
-game.visualize_one_round("./visualize")
-# game.run()
+# game.visualize_one_round("./visualize")
+game.run()
 
 # print([(data.data_type, data.value_label) for data in agents[0].trainer.episodes[0].data])
