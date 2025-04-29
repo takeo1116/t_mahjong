@@ -613,8 +613,8 @@ class Board:
         riichi = [False, False, False, False]
         exposes = [[], [], [], []]
 
-        discarded = [[] for _ in range(4)]  # そのプレイヤーが捨てた牌
-        safe = [set() for _ in range(4)]       # そのプレイヤーが捨てた牌＋同順内フリテン＋そのプレイヤーのリーチ後に誰かが捨てた牌
+        discarded = [[] for _ in range(4)]      # そのプレイヤーが捨てた牌
+        safe = [set() for _ in range(4)]        # そのプレイヤーが捨てた牌＋同順内フリテン＋そのプレイヤーのリーチ後に誰かが捨てた牌
 
         events = observation.events()
         for event in events:
@@ -799,17 +799,16 @@ class Action:
             instance.steal_tile = steal
             instance.expose_tile = expose
             instance.kan_kind = steal.tile_kind
-            
-            exp_num = len(expose)
-            # relation = Relation(kan.steal_from())
-            # hand_num = len(board.players[Relation.ME].hand.closed) % 3
-            # print(f"steal: {steal}, expose: {expose}, hand_num: {hand_num}, relation: {relation.name}")
-            if exp_num == 3:
-                instance.action_kind = ActionKind.KAN_OPEN
-            elif exp_num == 4:
-                instance.action_kind = ActionKind.KAN_CLOSE
-            elif exp_num == 1:  # TODO: これ違ってて、大明槓と加槓は両方とも(steal, exp)の形が同じ（1, 3の形）
+
+            in_hand = len([t for t in board.players[Relation.ME].hand.closed if t.tile_kind == steal.tile_kind])
+            if in_hand == 1:
                 instance.action_kind = ActionKind.KAN_ADD
+            elif in_hand == 3:
+                instance.action_kind = ActionKind.KAN_OPEN
+            elif in_hand == 4:
+                instance.action_kind = ActionKind.KAN_CLOSE
+            else:
+                raise Exception(f"unexpected KAN in_hand: {in_hand}")
         elif action_id == 175:  # ツモ
             instance.action_kind = ActionKind.TSUMO
             instance.tsumo_tile = Tile.from_mjx(action.tile())

@@ -15,7 +15,7 @@ class LearningConstants:
     BATTLE_NUM = 10
     BATCH_SIZE = 5000
     FILE_SIZE = 100
-    FILE_MIN = 75
+    FILE_MIN = 101
     SAVE_INTERVAL = 100000
     HOLD_MODELS = 10
     DELETE_RATE_DISCARD = 0.7
@@ -58,7 +58,7 @@ def lr_schedule(learned_data, datatype):
     if datatype == DataType.DISCARD:
         return 1e-5
     elif datatype == DataType.OPTIONAL:
-        return 1e-4
+        return 1e-5
     else:
         return 1.0
 
@@ -177,18 +177,19 @@ def main():
         files = [os.path.join(discard_dir, file) for file in os.listdir(discard_dir)]
 
         if len(files) >= LearningConstants.FILE_MIN:
+            dc_start = time.time()
             fulldataset = DiscardDataset()
             for file in files:
                 with open(file, mode="rb") as f:
                     ds = pickle.load(f)
                     fulldataset.addrange(ds.data)
-            
+            dc_read = time.time()
             datasets = fulldataset.split(LearningConstants.BATCH_SIZE)
 
             value_loss_sum, yaku_loss_sum, discard_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
             loss_sum, loss_count = 0.0, 0
             grad_norm = 0.0
-
+            dc_learn = time.time()
             for data in datasets:
                 optimizer.zero_grad()
 
@@ -253,7 +254,8 @@ def main():
                     f.write(model_path)
             
             bin_idx = (bin_idx + 1) % LearningConstants.BIN_NUM
-
+            dc_end = time.time()
+            print(f"read: {dc_read - dc_start}, learn: {dc_end - dc_learn}")
         else:
             print(f"discard:: bin {bin_idx}: file({len(files)}) < min({LearningConstants.FILE_MIN})")
         time.sleep(5)

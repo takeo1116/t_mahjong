@@ -1,7 +1,8 @@
 import torch
 
 class Model(torch.nn.Module):
-    MOMENTUM = 0.1
+    DISCARD_MOMENTUM = 0.1
+    OPTIONAL_MOMENTUM = 0.1
     YAKU_NUM = 3
     SCORE_NUM = 4
     DISCARD_NUM = 34
@@ -27,65 +28,65 @@ class Model(torch.nn.Module):
 
         # discardのレイヤー
         self.discard_board_bag = torch.nn.EmbeddingBag(board_feature_size, self.BOARD_INNER_SIZE, mode="sum")
-        self.discard_board_norm_1 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_board_norm_1 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_board_linear_1 = torch.nn.Linear(self.BOARD_INNER_SIZE, self.BOARD_INNER_SIZE, bias=False)
-        self.discard_board_norm_2 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_board_norm_2 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_board_linear_2 = torch.nn.Linear(self.BOARD_INNER_SIZE, self.BOARD_INNER_SIZE, bias=False)
-        self.discard_board_norm_3 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_board_norm_3 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
 
         self.discard_vys_linear_1 = torch.nn.Linear(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, bias=False)
-        self.discard_vys_norm_1 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_vys_norm_1 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_vys_linear_2 = torch.nn.Linear(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, bias=False)
-        self.discard_vys_norm_2 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_vys_norm_2 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
 
         self.discard_value_linear = torch.nn.Linear(self.VALUE_INNER_SIZE, self.VALUE_INNER_SIZE, bias=False)
-        self.discard_value_norm = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_value_norm = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_value_out = torch.nn.Linear(self.VALUE_INNER_SIZE, 1, bias=True)
 
         self.discard_yaku_linear = torch.nn.Linear(self.YAKU_INNER_SIZE, self.YAKU_INNER_SIZE, bias=False)
-        self.discard_yaku_norm = torch.nn.BatchNorm1d(self.YAKU_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_yaku_norm = torch.nn.BatchNorm1d(self.YAKU_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_yaku_out = torch.nn.Linear(self.YAKU_INNER_SIZE, self.YAKU_NUM, bias=True)
 
         self.discard_score_linear = torch.nn.Linear(self.SCORE_INNER_SIZE, self.SCORE_INNER_SIZE, bias=False)
-        self.discard_score_norm = torch.nn.BatchNorm1d(self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_score_norm = torch.nn.BatchNorm1d(self.SCORE_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_score_out = torch.nn.Linear(self.SCORE_INNER_SIZE, self.SCORE_NUM, bias=True)
 
-        self.discard_bag = torch.nn.EmbeddingBag(board_feature_size, self.MINI_UNIT_SIZE, mode="sum")
-        self.discard_norm_1 = torch.nn.BatchNorm1d(self.MINI_UNIT_SIZE, momentum=self.MOMENTUM)
+        self.discard_bag = torch.nn.EmbeddingBag(discard_feature_size, self.MINI_UNIT_SIZE, mode="sum")
+        self.discard_norm_1 = torch.nn.BatchNorm1d(self.MINI_UNIT_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_linear = torch.nn.Linear(self.UNIT_SIZE+self.MINI_UNIT_SIZE, self.DISCARD_INNER_SIZE, bias=False)
-        self.discard_norm_2 = torch.nn.BatchNorm1d(self.DISCARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.discard_norm_2 = torch.nn.BatchNorm1d(self.DISCARD_INNER_SIZE, momentum=self.DISCARD_MOMENTUM)
         self.discard_out = torch.nn.Linear(self.DISCARD_INNER_SIZE, self.DISCARD_NUM, bias=True)
 
         # optionalのレイヤー
         self.optional_board_bag = torch.nn.EmbeddingBag(board_feature_size, self.BOARD_INNER_SIZE, mode="sum")
-        self.optional_board_norm_1 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_board_norm_1 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_board_linear_1 = torch.nn.Linear(self.BOARD_INNER_SIZE, self.BOARD_INNER_SIZE, bias=False)
-        self.optional_board_norm_2 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_board_norm_2 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_board_linear_2 = torch.nn.Linear(self.BOARD_INNER_SIZE, self.BOARD_INNER_SIZE, bias=False)
-        self.optional_board_norm_3 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_board_norm_3 = torch.nn.BatchNorm1d(self.BOARD_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
 
         self.optional_vys_linear_1 = torch.nn.Linear(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, bias=False)
-        self.optional_vys_norm_1 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_vys_norm_1 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_vys_linear_2 = torch.nn.Linear(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, bias=False)
-        self.optional_vys_norm_2 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_vys_norm_2 = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE+self.YAKU_INNER_SIZE+self.SCORE_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         
         self.optional_value_linear = torch.nn.Linear(self.VALUE_INNER_SIZE, self.VALUE_INNER_SIZE, bias=False)
-        self.optional_value_norm = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_value_norm = torch.nn.BatchNorm1d(self.VALUE_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_value_out = torch.nn.Linear(self.VALUE_INNER_SIZE, 1, bias=True)
 
         self.optional_yaku_linear = torch.nn.Linear(self.YAKU_INNER_SIZE, self.YAKU_INNER_SIZE, bias=False)
-        self.optional_yaku_norm = torch.nn.BatchNorm1d(self.YAKU_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_yaku_norm = torch.nn.BatchNorm1d(self.YAKU_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_yaku_out = torch.nn.Linear(self.YAKU_INNER_SIZE, self.YAKU_NUM, bias=True)
 
         self.optional_score_linear = torch.nn.Linear(self.SCORE_INNER_SIZE, self.SCORE_INNER_SIZE, bias=False)
-        self.optional_score_norm = torch.nn.BatchNorm1d(self.SCORE_INNER_SIZE, momentum=self.MOMENTUM)
+        self.optional_score_norm = torch.nn.BatchNorm1d(self.SCORE_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.optional_score_out = torch.nn.Linear(self.SCORE_INNER_SIZE, self.SCORE_NUM, bias=True)
         
         self.action_bag = torch.nn.EmbeddingBag(optional_feature_size, self.ACTION_INNER_SIZE, mode="sum")
-        self.action_norm = torch.nn.BatchNorm1d(self.ACTION_INNER_SIZE, momentum=self.MOMENTUM)
+        self.action_norm = torch.nn.BatchNorm1d(self.ACTION_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
 
         self.policy_linear = torch.nn.Linear(self.POLICY_INNER_SIZE, self.POLICY_INNER_SIZE, bias=False)
-        self.policy_norm = torch.nn.BatchNorm1d(self.POLICY_INNER_SIZE, momentum=self.MOMENTUM)
+        self.policy_norm = torch.nn.BatchNorm1d(self.POLICY_INNER_SIZE, momentum=self.OPTIONAL_MOMENTUM)
         self.policy_out = torch.nn.Linear(self.POLICY_INNER_SIZE, 1, bias=True)
 
     def _innner_forward_discard(self, board_indexes, board_offsets, action_indexes, action_offsets):

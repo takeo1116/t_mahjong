@@ -95,7 +95,8 @@ class SingleGame:
     def repeat(
         self,
         repeat: int = -1,
-        log_time: float = None  # 入ってるとログを表示する
+        log_time: float = None,     # 入ってるとログを表示する
+        simulated_epsilon: float = None,   
     ):
         # 引数なしで永遠に繰り返す
         if repeat < -1:
@@ -106,7 +107,7 @@ class SingleGame:
                 break
             self.run()
             if log_time != None and cnt == 0:
-                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()], "ranks": [agent.get_rank() for agent in self.agents.values()]}
+                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()], "ranks": [agent.get_rank() for agent in self.agents.values()], "epsilon": simulated_epsilon}
                 print(log_dict, flush=True)
             cnt += 1
 
@@ -122,48 +123,38 @@ def battle(
     model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
     model_path = ""
 
+    epsilon = 0.15
+
     agents = None
     if log_time is not None:    # log
         agents = [
-            Actor(model),
-            Actor(model),
-            Actor(model),
-            ShantenActor(model)
+            Actor(model, discard_softmax=False, optional_epsilon=0.0),
+            Actor(model, discard_softmax=False, optional_epsilon=0.0),
+            Actor(model, discard_softmax=False, optional_epsilon=0.0),
+            ShantenActor(model),
         ]
-        # agents = [
-        #     MenzenActor(model),
-        #     MenzenActor(model),
-        #     MenzenActor(model),
-        #     ShantenActor(model)
-        # ]
     else:                       # 自己対戦
         if rule_index == 0:
             agents = [
-                Actor(model),
-                Actor(model, temperature=None),
-                Actor(model, temperature=1.0),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
                 ShantenActor(model)
             ]
         elif rule_index == 1:
             agents = [
-                Actor(model),
-                Actor(model, temperature=None),
-                Actor(model, temperature=1.0),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
                 MenzenActor(model)
             ]
         else:
             agents = [
-                Actor(model),
-                Actor(model),
-                Actor(model),
-                Actor(model, temperature=1.0)
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
+                Actor(model, discard_softmax=True, optional_epsilon=epsilon),
             ]
-        # agents = [
-        #     ShantenActor(model),
-        #     ShantenActor(model),
-        #     ShantenActor(model),
-        #     ShantenActor(model)
-        # ]
     game = SingleGame(agents)
     cnt = 0
     while True:
@@ -174,12 +165,15 @@ def battle(
             model_path = f.readline()
 
         model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"), weights_only=False))
-        game.repeat(LearningConstants.BATTLE_NUM, log_time)
+        game.repeat(LearningConstants.BATTLE_NUM, log_time, epsilon)
 
         for player_id in range(4):
             agents[player_id].export(os.path.join(learn_dir, f"learndata_{0}"), LearningConstants.FILE_SIZE, LearningConstants.BIN_NUM)
+            if log_time is None:
+                agents[player_id].set_random_parameter(discard_softmax=None, optional_epsilon=epsilon)
 
         cnt += 1
+        epsilon *= 0.998
 
 def main():
     torch.set_num_threads(1)
@@ -197,8 +191,9 @@ def main():
             process = multiprocessing.Process(target=battle, args=(10, temperature, rule_index, None))
             sub_processes.append(process)
             process.start()
-            rule_index = 1 - rule_index
+            # rule_index = 1 - rule_index
             # rule_index = (rule_index + 1) % num_subprocess
+            rule_index = (rule_index + 1) % 3
 
         for process in sub_processes:
             process.join(timeout=1)

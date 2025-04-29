@@ -8,7 +8,7 @@ from feature import BoardFeature, DiscardActionFeature, OptionalActionFeature
 
 
 model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
-model.load_state_dict(torch.load("./learn/model_0_71605000_18715000.pth"))
+model.load_state_dict(torch.load("./learn/model_0_70385000_22095000.pth"))
 
 temperature = 1.0
 
@@ -39,6 +39,13 @@ agents = [
     Actor(model),
     Actor(model),
 ]
+
+# agents = [
+#     Actor(model, temperature=None, no_furo=True),
+#     Actor(model, temperature=None, no_furo=True),
+#     Actor(model, temperature=None, no_furo=True),
+#     Actor(model, temperature=None, no_furo=True),
+# ]
 
 game = SingleGame(agents)
 game.visualize_one_round("./visualize")
