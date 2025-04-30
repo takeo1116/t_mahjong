@@ -96,7 +96,6 @@ class SingleGame:
         self,
         repeat: int = -1,
         log_time: float = None,     # 入ってるとログを表示する
-        simulated_epsilon: float = None,   
     ):
         # 引数なしで永遠に繰り返す
         if repeat < -1:
@@ -107,7 +106,7 @@ class SingleGame:
                 break
             self.run()
             if log_time != None and cnt == 0:
-                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()], "ranks": [agent.get_rank() for agent in self.agents.values()], "epsilon": simulated_epsilon}
+                log_dict = {"time": time.time() - self.start_time + log_time, "scores": [agent.get_score() for agent in self.agents.values()], "ranks": [agent.get_rank() for agent in self.agents.values()]}
                 print(log_dict, flush=True)
             cnt += 1
 
@@ -115,6 +114,7 @@ def battle(
     iteration = -1,
     temperature: float = None,
     rule_index: int = None,
+    epsilon: float = None,
     log_time: float = None  # 入ってるとログを表示する
 ):
     # とりあえずmodel0のみ
@@ -122,8 +122,6 @@ def battle(
 
     model = Model(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
     model_path = ""
-
-    epsilon = 0.15
 
     agents = None
     if log_time is not None:    # log
@@ -165,15 +163,12 @@ def battle(
             model_path = f.readline()
 
         model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"), weights_only=False))
-        game.repeat(LearningConstants.BATTLE_NUM, log_time, epsilon)
+        game.repeat(LearningConstants.BATTLE_NUM, log_time)
 
         for player_id in range(4):
             agents[player_id].export(os.path.join(learn_dir, f"learndata_{0}"), LearningConstants.FILE_SIZE, LearningConstants.BIN_NUM)
-            if log_time is None:
-                agents[player_id].set_random_parameter(discard_softmax=None, optional_epsilon=epsilon)
 
         cnt += 1
-        epsilon *= 0.998
 
 def main():
     torch.set_num_threads(1)
@@ -181,19 +176,25 @@ def main():
     temperature = 1.0
     
     log_time = 0.0
-    main_process = multiprocessing.Process(target=battle, args=(-1, None, 0, log_time))
+    main_process = multiprocessing.Process(target=battle, args=(-1, None, 0, 0.0, log_time))
     main_process.start()
 
     sub_processes = []
     rule_index = 0
+    epsilon = 0.15
+    ep_count = 0
     while True:
         while len(sub_processes) < num_subprocess:
-            process = multiprocessing.Process(target=battle, args=(10, temperature, rule_index, None))
+            process = multiprocessing.Process(target=battle, args=(10, temperature, rule_index, epsilon, None))
             sub_processes.append(process)
             process.start()
             # rule_index = 1 - rule_index
             # rule_index = (rule_index + 1) % num_subprocess
             rule_index = (rule_index + 1) % 3
+            epsilon *= 0.998
+            ep_count += 1
+            if ep_count % 20 == 0:
+                print(f"epsilon: {epsilon}")
 
         for process in sub_processes:
             process.join(timeout=1)

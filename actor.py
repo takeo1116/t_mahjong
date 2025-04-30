@@ -222,7 +222,9 @@ class DiscardDataset(Dataset):
             yaku_labels.append(self.make_yaku_labels([1 if flag else 0 for flag in entry.yaku_label]))
             discard_idxes.append(entry.discard_index)
 
-            policy_labels.append(entry.policy_label if entry.policy_label >= 0 else entry.policy_label * 0.3)
+            policy_labels.append(entry.policy_label if entry.policy_label >= 0 else entry.policy_label * 0.0)
+            # policy_labels.append(entry.policy_label if entry.policy_label >= 0 else entry.policy_label * 0.3)
+            # policy_labels.append(entry.policy_label)
 
             score_labels.append(entry.score_label)
         return value_labels, yaku_labels, discard_idxes, policy_labels, score_labels
@@ -309,7 +311,7 @@ class OptionalDataset(Dataset):
         return len(self.data)
 
 class Episode(Dataset):
-    DISCOUNT_RATE = 0.95                         # 報酬の割引率（value_inferredで埋める）
+    DISCOUNT_RATE = 0.95                        # 報酬の割引率（value_inferredで埋める）
     RESULT_RATE = 0.2                           # valueにresultを反映させる割合
     POLICY_MAX = 0.4
     POLICY_MIN = -POLICY_MAX
@@ -361,8 +363,10 @@ class Episode(Dataset):
             full_reward = entry.round_reward * self.REWARD_ROUND_RATE + entry.game_reward * self.REWARD_GAME_RATE
             next_full_value = next_round_value * self.REWARD_ROUND_RATE + next_game_value * self.REWARD_GAME_RATE
             entry.value_label = next_full_value * (1.0 - self.RESULT_RATE) + full_reward * self.RESULT_RATE
+
             policy = max(self.POLICY_MIN, min(next_value_inferred - entry.value_inferred, self.POLICY_MAX))
             # policy = max(self.POLICY_MIN, min(next_full_value - entry.value_inferred, self.POLICY_MAX))
+
             # print(f"finish: {entry.round_final}, next_round_value: {next_round_value}, next_game_value: {next_game_value}, next_value_inffered: {next_value_inferred}, round_reward: {entry.round_reward}, game_reward: {entry.game_reward}, full_reward: {full_reward}, next_full_value: {next_full_value}")
             if entry.data_type == DataType.DISCARD:     # DISCARD
                 entry.policy_label = policy
