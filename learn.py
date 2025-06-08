@@ -1,194 +1,421 @@
 import os
+import shutil
 import time
 import random
 import torch
+import pickle
 from collections import deque
+from torch import nn
 
-from model import Model
-from feature import BoardFeature, HandFeature, ActionFeature
-from actor import Dataset
+from model.simple_mlp_model import SimpleMlpModel
+from model.split_mlp_model import SplitMlpModel
+from feature.feature_vector import BoardFeature, ActionFeature, OptionalActionFeature, DiscardActionFeature
+from actor.simple_mlp_actor import Dataset
+from actor.split_mlp_actor import DiscardDataset, OptionalDataset
 
-class LearningConstants:
-    BATTLE_NUM = 10
+class LearnerBase:
+    def __init__(
+        self,
+        device: str = "cpu",
+        learn_dir: str = "./learn",
+    ) -> None:
+        self.device = device
+        self.learn_dir = learn_dir
+    
+    @staticmethod
+    def get_grad_norm(
+        model: torch.nn.Module,
+    ) -> float:
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm ** 2
+        return total_norm ** 0.5
+
+    def setup_result_directories(
+        self,
+    ) -> None:
+        raise NotImplementedError()
+
+    def learn(
+        self,
+    ) -> None:
+        raise NotImplementedError()
+
+class SimpleMlpLearner(LearnerBase):
     BATCH_SIZE = 5000
     FILE_SIZE = 100
-    FILE_MIN = 75
+    FILE_MIN = 101
     SAVE_INTERVAL = 100000
     HOLD_MODELS = 10
     DELETE_RATE = 0.5
     YAKU_NUM = 3
     BIN_NUM = 5
 
-def lr_schedule(learned_data):
-    return 1e-4
+    def __init__(
+        self,
+        model_path: str = None,          # 途中から学習する場合
+        device: str = "cpu",
+        learn_dir: str = "./learn",
+    ) -> None:
+        super().__init__(device, learn_dir)
+        self.model = SimpleMlpModel(BoardFeature.SIZE, ActionFeature.SIZE)
+        if model_path is not None:
+            pass    # TODO: モデルの読み込みを書く
+        self.device = device
+        self.model.to(device)
+        self.model.train()
 
-def make_yaku_labels(yaku_raw):
-    # 成立した役の一覧からyaku_labelsを作る
-    '''
-    1. 役が成立しなかった（＝上がれなかった）
-    2. 面前役のみで上がった
-    3. 副露役を含めて上がった
-    の3つのラベルに分ける
-    '''
-    open_yaku = [       # Mjxの副露役のindex
-        3,  # 槍槓
-        4,  # 嶺上開花
-        5,  # 海底撈月
-        6,  # 河底撈魚
-        8,  # 断幺九
-        10, # 自風（東）
-        11, # 自風（南）
-        12, # 自風（西）
-        13, # 自風（北）
-        14, # 場風（東）
-        15, # 場風（南）
-        16, # 場風（西）
-        17, # 場風（北）
-        18, # 役牌（白）
-        19, # 役牌（發）
-        20, # 役牌（中）
-        23, # 混全帯幺九
-        24, # 一気通貫
-        25, # 三色同順
-        26, # 三色同刻
-        27, # 三槓子
-        28, # 対々和
-        29, # 三暗刻
-        30, # 小三元
-        31, # 混老頭
-        33, # 純全帯幺九
-        34, # 混一色
-        35, # 清一色
-        39, # 大三元
-        42, # 字一色
-        43, # 緑一色
-        44, # 清老頭
-        49, # 大四喜
-        50, # 小四喜
-        51, # 四槓子
-    ]
+    def get_grad_norm(
+        self,
+        model
+    ) -> float:
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm ** 2
+        return total_norm ** 0.5
 
-    cnt = 0
-    for idx, flag in enumerate(yaku_raw):
-        if flag:
-            cnt += 1
-            if idx in open_yaku:    # 副露役を含めて上がり
-                return [0, 0, 1]
-    if cnt > 0: # 面前役のみで上がり
-        return [0, 1, 0]
-    else:       # 上がれなかった
-        return [1, 0, 0]
+    def setup_result_directories(
+        self,
+    ) -> None:
+        if os.path.isdir(self.learn_dir):
+            shutil.rmtree(self.learn_dir)
+        os.makedirs(self.learn_dir, exist_ok=False)
+        os.mkdir(os.path.join(self.learn_dir, "learndata"))
+        for bin_idx in range(self.BIN_NUM):
+            os.mkdir(os.path.join(self.learn_dir, f"learndata/bin_{bin_idx}"))
 
+    def learn(
+        self,
+    ) -> None:
+        self.setup_result_directories()
+
+        paths = deque()
+        learned_data, last_saved = 0, 0
+        model_path = os.path.join(self.learn_dir, f"model_{learned_data}.pth")
+        torch.save(self.model.state_dict(), model_path)
+        paths.append(model_path)
+        with open(os.path.join(self.learn_dir, f"modelpath.txt"), mode="w") as f:
+            f.write(model_path)
+
+        # 学習
+        bin_idx = 0
+        lr = 1e-5
+        while True:
+            data_dir = f"./learn/learndata/bin_{bin_idx}"
+            optimizer = torch.optim.RMSprop(self.model.parameters(), lr=lr, eps=1e-4)
+            files = [os.path.join(data_dir, file) for file in os.listdir(data_dir)] # TODO: 端数が捨てられる問題をどうする？
+
+            if len(files) >= self.FILE_MIN:
+                fulldataset = Dataset()
+                for file in files:
+                    with open(file, mode="rb") as f:
+                        ds = pickle.load(f)
+                        fulldataset.addrange(ds.data)
+                datasets = fulldataset.split(self.BATCH_SIZE)
+
+                value_loss_sum, yaku_loss_sum, policy_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
+                loss_sum, loss_count = 0.0, 0
+                grad_norm = 0.0
+
+                for data in datasets:
+                    optimizer.zero_grad()
+
+                    board_indexes, board_offsets, action_indexes, action_offsets = data.make_inputs()
+                    board_indexes = torch.LongTensor(board_indexes).to(self.device)
+                    board_offsets = torch.LongTensor(board_offsets).to(self.device)
+                    action_indexes = torch.LongTensor(action_indexes).to(self.device)
+                    action_offsets = torch.LongTensor(action_offsets).to(self.device)
+                    value_labels, yaku_labels, policy_labels, score_labels = data.make_labels()
+
+                    value_labels = torch.FloatTensor([[v] for v in value_labels]).to(self.device)
+                    yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(self.device)
+                    policy_labels = torch.FloatTensor([[p] for p in policy_labels]).to(self.device)
+                    score_labels = torch.FloatTensor([ss for ss in score_labels]).to(self.device)
+
+                    value, yaku, policy, score = self.model.forward(board_indexes, board_offsets, action_indexes, action_offsets)
+
+                    value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
+                    yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
+                    policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="sum", delta=0.2)
+                    score_loss = torch.nn.functional.huber_loss(score, score_labels, reduction="sum")
+
+                    value_loss /= 1.0
+                    yaku_loss /= 30.0
+                    policy_loss /= 0.4
+                    score_loss /= 5.0
+                    value_loss_sum += value_loss
+                    yaku_loss_sum += yaku_loss
+                    policy_loss_sum += policy_loss
+                    score_loss_sum += score_loss
+
+                    loss = value_loss + yaku_loss + policy_loss + score_loss
+
+                    loss_count += len(data)
+                    learned_data += len(data)
+
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 3000.0)
+                    grad_norm = self.get_grad_norm(self.model)
+                    optimizer.step()
+
+                if loss_count > 0:
+                    print(f"bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, score_loss: {score_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {lr}", flush=True)
+
+                for file in files:
+                    r = random.random()
+                    if r < self.DELETE_RATE:
+                        os.remove(file)
+
+                if learned_data > last_saved + self.SAVE_INTERVAL:
+                    model_path = os.path.join(self.learn_dir, f"model_{learned_data}.pth")
+                    torch.save(self.model.state_dict(), model_path)
+                    last_saved = learned_data
+                    print(f"saved: {model_path}")
+                    paths.append(model_path)
+                    if len(paths) > self.HOLD_MODELS:
+                        popped = paths.popleft()
+                        os.remove(popped)
+                    with open(os.path.join(self.learn_dir, f"modelpath.txt"), mode="w") as f:
+                        f.write(model_path)
+
+                bin_idx = (bin_idx + 1) % self.BIN_NUM
+            else:
+                print(f"bin {bin_idx}: file({len(files)}) < min({self.FILE_MIN})")
+            time.sleep(5)
+
+class SplitMlpLearner(LearnerBase):
+    BATCH_SIZE = 5000
+    FILE_SIZE = 100
+    FILE_MIN = 101
+    SAVE_INTERVAL = 100000
+    HOLD_MODELS = 10
+    DELETE_RATE_DISCARD = 0.7
+    DELETE_RATE_OPTIONAL = 0.5
+    YAKU_NUM = 3
+    BIN_NUM = 5
+
+    def __init__(
+        self,
+        model_path: str = None,          # 途中から学習する場合
+        device: str = "cpu",
+        learn_dir: str = "./learn",
+    ) -> None:
+        super().__init__(device, learn_dir)
+        self.model = SplitMlpModel(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
+        if model_path is not None:
+            pass    # TODO: モデルの読み込みを書く
+        self.device = device
+        self.model.to(device)
+        self.model.train()
+
+    def get_grad_norm(
+        self,
+        model
+    ) -> float:
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm ** 2
+        return total_norm ** 0.5
+
+    def setup_result_directories(
+        self,
+    ) -> None:
+        if os.path.isdir(self.learn_dir):
+            shutil.rmtree(self.learn_dir)
+        os.makedirs(self.learn_dir, exist_ok=False)
+        os.mkdir(os.path.join(self.learn_dir, "learndata"))
+        for bin_idx in range(self.BIN_NUM):
+            os.mkdir(os.path.join(self.learn_dir, f"learndata/discard_{bin_idx}"))
+            os.mkdir(os.path.join(self.learn_dir, f"learndata/optional_{bin_idx}"))
+
+    def learn(
+        self,
+    ) -> None:
+        self.setup_result_directories()
+
+        paths = deque()
+        learned_discard_data, learned_optional_data, last_saved = 0, 0, 0
+        model_path = os.path.join(self.learn_dir, f"model_{learned_discard_data}_{learned_optional_data}.pth")
+        torch.save(self.model.state_dict(), model_path)
+        paths.append(model_path)
+        with open(os.path.join(self.learn_dir, f"modelpath.txt"), mode="w") as f:
+            f.write(model_path)
+
+        # 学習
+        bin_idx = 0
+        discard_lr, optional_lr = 1e-5, 1e-5
+
+        while True:
+            # optional学習
+            optional_dir = f"./learn/learndata/optional_{bin_idx}"
+            optimizer = torch.optim.RMSprop(self.model.parameters(), lr=optional_lr, eps=1e-4)
+            files = [os.path.join(optional_dir, file) for file in os.listdir(optional_dir)] # TODO: 端数が捨てられる問題をどうする？
+
+            if len(files) >= self.FILE_MIN:
+                fulldataset = OptionalDataset()
+                for file in files:
+                    with open(file, mode="rb") as f:
+                        ds = pickle.load(f)
+                        fulldataset.addrange(ds.data)
+                
+                datasets = fulldataset.split(self.BATCH_SIZE)
+
+                value_loss_sum, yaku_loss_sum, policy_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
+                loss_sum, loss_count = 0.0, 0
+                grad_norm = 0.0
+
+                for data in datasets:
+                    optimizer.zero_grad()
+
+                    board_indexes, board_offsets, action_indexes, action_offsets = data.make_inputs()
+                    board_indexes = torch.LongTensor(board_indexes).to(self.device)
+                    board_offsets = torch.LongTensor(board_offsets).to(self.device)
+                    action_indexes = torch.LongTensor(action_indexes).to(self.device)
+                    action_offsets = torch.LongTensor(action_offsets).to(self.device)
+                    value_labels, yaku_labels, policy_labels, score_labels = data.make_labels()
+
+                    value_labels = torch.FloatTensor([[v] for v in value_labels]).to(self.device)
+                    yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(self.device)
+                    policy_labels = torch.FloatTensor([[p] for p in policy_labels]).to(self.device)
+                    score_labels = torch.FloatTensor([ss for ss in score_labels]).to(self.device)
+
+                    value, yaku, policy, score = self.model.forward_optional(board_indexes, board_offsets, action_indexes, action_offsets)
+
+                    value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
+                    yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
+                    policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="sum", delta=0.2)
+                    score_loss = torch.nn.functional.huber_loss(score, score_labels, reduction="sum")
+
+                    value_loss /= 1.0
+                    yaku_loss /= 30.0
+                    policy_loss /= 0.4
+                    score_loss /= 5.0
+                    value_loss_sum += value_loss
+                    yaku_loss_sum += yaku_loss
+                    policy_loss_sum += policy_loss
+                    score_loss_sum += score_loss
+
+                    loss = value_loss + yaku_loss + policy_loss + score_loss
+
+                    loss_count += len(data)
+                    learned_optional_data += len(data)
+
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 3000.0)
+                    grad_norm = self.get_grad_norm(self.model)
+                    optimizer.step()
+
+                if loss_count > 0:
+                    print(f"OPTIONAL:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, score_loss: {score_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {optional_lr}", flush=True)
+
+                for file in files:
+                    r = random.random()
+                    if r < self.DELETE_RATE_OPTIONAL:
+                        os.remove(file)
+            else:
+                print(f"optional:: bin {bin_idx}: file({len(files)}) < min({self.FILE_MIN})")
+
+            # discard学習
+            discard_dir = f"./learn/learndata/discard_{bin_idx}"
+            optimizer = torch.optim.RMSprop(self.model.parameters(), lr=discard_lr, eps=1e-4)
+            files = [os.path.join(discard_dir, file) for file in os.listdir(discard_dir)]
+
+            if len(files) >= self.FILE_MIN:
+                dc_start = time.time()
+                fulldataset = DiscardDataset()
+                for file in files:
+                    with open(file, mode="rb") as f:
+                        ds = pickle.load(f)
+                        fulldataset.addrange(ds.data)
+                dc_read = time.time()
+                datasets = fulldataset.split(self.BATCH_SIZE)
+
+                value_loss_sum, yaku_loss_sum, discard_loss_sum, score_loss_sum = 0.0, 0.0, 0.0, 0.0
+                loss_sum, loss_count = 0.0, 0
+                grad_norm = 0.0
+                dc_learn = time.time()
+                for data in datasets:
+                    optimizer.zero_grad()
+
+                    board_indexes, board_offsets, action_indexes, action_offsets, valid_masks = data.make_inputs()
+                    board_indexes = torch.LongTensor(board_indexes).to(self.device)
+                    board_offsets = torch.LongTensor(board_offsets).to(self.device)
+                    action_indexes = torch.LongTensor(action_indexes).to(self.device)
+                    action_offsets = torch.LongTensor(action_offsets).to(self.device)
+                    valid_tensor = torch.tensor(valid_masks, dtype=torch.bool)
+
+                    value_labels, yaku_labels, discard_idxes, policy_labels, score_labels = data.make_labels(valid_masks)
+                    value_labels = torch.FloatTensor([[v] for v in value_labels]).to(self.device)
+                    yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(self.device)
+                    discard_idxes = torch.LongTensor([d for d in discard_idxes]).to(self.device)
+                    policy_labels = torch.FloatTensor([p for p in policy_labels]).to(self.device)
+                    score_labels = torch.FloatTensor([ss for ss in score_labels]).to(self.device)
+
+                    value, yaku, discard, score = self.model.forward_discard(board_indexes, board_offsets, action_indexes, action_offsets, valid_tensor)
+                    value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
+                    yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
+                    score_loss = torch.nn.functional.huber_loss(score, score_labels, reduction="sum")
+                    discard_loss = torch.nn.functional.cross_entropy(discard, discard_idxes, reduction="none")
+                    discard_loss *= policy_labels
+                    discard_loss = discard_loss.sum()
+
+                    value_loss /= 0.5
+                    yaku_loss /= 30.0
+                    discard_loss /= 10.0
+                    score_loss /= 5.0
+                    value_loss_sum += value_loss
+                    yaku_loss_sum += yaku_loss
+                    discard_loss_sum += discard_loss
+                    score_loss_sum += score_loss
+
+                    loss = value_loss + yaku_loss + discard_loss + score_loss
+                    loss_count += len(data)
+                    learned_discard_data += len(data)
+
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 1000.0)
+                    grad_norm = self.get_grad_norm(self.model)
+                    optimizer.step()
+
+                print(f"DISCARD:: bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, discard_loss: {discard_loss_sum / loss_count}, score_loss: {score_loss_sum / loss_count}, grad_norm: {grad_norm}, lr: {discard_lr}", flush=True)
+
+                for file in files:
+                    r = random.random()
+                    if r < self.DELETE_RATE_DISCARD:
+                        os.remove(file)
+
+                if learned_discard_data > last_saved + self.SAVE_INTERVAL:
+                    model_path = os.path.join(self.learn_dir, f"model_{learned_discard_data}_{learned_optional_data}.pth")
+                    torch.save(self.model.state_dict(), model_path)
+                    last_saved = learned_discard_data
+                    print(f"saved: {model_path}")
+                    paths.append(model_path)
+                    if len(paths) > self.HOLD_MODELS:
+                        popped = paths.popleft()
+                        os.remove(popped)
+                    with open(os.path.join(self.learn_dir, f"modelpath.txt"), mode="w") as f:
+                        f.write(model_path)
+                
+                bin_idx = (bin_idx + 1) % self.BIN_NUM
+                dc_end = time.time()
+                print(f"read: {dc_read - dc_start}, learn: {dc_end - dc_learn}")
+            else:
+                print(f"discard:: bin {bin_idx}: file({len(files)}) < min({self.FILE_MIN})")
+            time.sleep(5)
+        
+
+        
 def main():
-    # ディレクトリ生成
-    device = "cuda:0"
-    learn_dir = "./learn"
-    os.makedirs(learn_dir, exist_ok=True)
+    learner = SimpleMlpLearner(model_path=None, device="cuda:0", learn_dir="./learn")
+    # learner = SplitMlpLearner(model_path=None, device="cuda:0", learn_dir="./learn")
 
-    agents = [file for file in os.listdir(learn_dir) if os.path.isfile(os.path.join(learn_dir, file)) and file.startswith("modelpath_") and file.endswith(".txt")]
-    agent_idx = len(agents)
-    agent_idx = 0
-    print(f"agent_idx: {agent_idx}")
-
-    os.mkdir(os.path.join(learn_dir, f"learndata_{agent_idx}"))
-
-    for bin_idx in range(LearningConstants.BIN_NUM):
-        os.makedirs(os.path.join(learn_dir, f"learndata_{agent_idx}/bin_{bin_idx}"), exist_ok=True)
-
-    model = Model(BoardFeature.SIZE, ActionFeature.SIZE)
-    paths = deque()
-    learned_data, last_saved = 0, 0
-    model_path = os.path.join(learn_dir, f"model_{agent_idx}_{learned_data}.pth")
-    torch.save(model.state_dict(), model_path)
-    paths.append(model_path)
-    with open(os.path.join(learn_dir, f"modelpath_{agent_idx}.txt"), mode="w") as f:
-        f.write(model_path)
-
-    # 学習
-    model.to(device)
-    model.train()
-
-    bin_idx = 0
-    while True:
-        data_dir = f"./learn/learndata_{0}/bin_{bin_idx}"
-        lr = lr_schedule(learned_data)
-        optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, eps=1e-4)
-        files = [os.path.join(data_dir, file) for file in os.listdir(data_dir)] # TODO: 端数が捨てられる問題をどうする？
-        if len(files) >= LearningConstants.FILE_MIN:
-            b = b""
-            for file in files:
-                with open(file, mode="rb") as f:
-                    b += f.read()
-
-            fulldataset = Dataset.from_bytes(b)
-            datasets = fulldataset.split(LearningConstants.BATCH_SIZE)
-
-            value_loss_sum, yaku_loss_sum, policy_loss_sum = 0.0, 0.0, 0.0
-            loss_sum, loss_count = 0.0, 0
-
-            for data in datasets:
-                optimizer.zero_grad()
-
-                board_indexes, board_offsets, action_indexes, action_offsets = data.make_inputs()
-                board_indexes = torch.LongTensor(board_indexes).to(device)
-                board_offsets = torch.LongTensor(board_offsets).to(device)
-                action_indexes = torch.LongTensor(action_indexes).to(device)
-                action_offsets = torch.LongTensor(action_offsets).to(device)
-
-                value_labels, yaku_raw, policy_labels = data.make_labels()
-                yaku_labels = [make_yaku_labels(yaku) for yaku in yaku_raw]
-
-                value_labels = torch.FloatTensor([[v] for v in value_labels]).to(device)
-                yaku_labels = torch.FloatTensor([ys for ys in yaku_labels]).to(device)
-                policy_labels = torch.FloatTensor([[p] for p in policy_labels]).to(device)
-
-                out = model(board_indexes, board_offsets, action_indexes, action_offsets)
-                value, yaku, policy = torch.split(out, [1, LearningConstants.YAKU_NUM, 1], dim=1)
-
-                value_loss = torch.nn.functional.huber_loss(value, value_labels, reduction="sum", delta=0.2)
-                yaku_loss = torch.nn.functional.cross_entropy(yaku, yaku_labels, reduction="sum")
-                policy_loss = torch.nn.functional.huber_loss(policy, policy_labels, reduction="sum", delta=0.2)
-
-                value_loss /= 1.0
-                yaku_loss /= 30.0
-                policy_loss /= 0.4
-
-                value_loss_sum += value_loss
-                yaku_loss_sum += yaku_loss
-                policy_loss_sum += policy_loss
-
-                loss = value_loss + yaku_loss + policy_loss
-
-                loss_count += len(data)
-                learned_data += len(data)
-
-                loss.backward()
-
-                optimizer.step()
-
-            print(f"bin {bin_idx}: learn files: {len(files)}, value_loss: {value_loss_sum / loss_count}, yaku_loss: {yaku_loss_sum / loss_count}, policy_loss: {policy_loss_sum / loss_count}, lr: {lr}", flush=True)
-
-            for file in files:
-                r = random.random()
-                if r < LearningConstants.DELETE_RATE:
-                    os.remove(file)
-
-            if learned_data > last_saved + LearningConstants.SAVE_INTERVAL:
-                model_path = os.path.join(learn_dir, f"model_{agent_idx}_{learned_data}.pth")
-                torch.save(model.state_dict(), model_path)
-                last_saved = learned_data
-                print(f"saved: {model_path}")
-                paths.append(model_path)
-                if len(paths) > LearningConstants.HOLD_MODELS:
-                    popped = paths.popleft()
-                    os.remove(popped)
-                with open(os.path.join(learn_dir, f"modelpath_{agent_idx}.txt"), mode="w") as f:
-                    f.write(model_path)
-
-            bin_idx = (bin_idx + 1) % LearningConstants.BIN_NUM  
-        else:
-            print(f"bin {bin_idx}: file({len(files)}) < min({LearningConstants.FILE_MIN})")
-        time.sleep(20)
+    learner.learn()
 
 if __name__ == "__main__":
     main()
