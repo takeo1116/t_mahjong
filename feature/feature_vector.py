@@ -113,6 +113,7 @@ class HandFeature:
     PHASE = MENZEN + 1
     EXPOSED = PHASE + PhaseFeature.SIZE                             # 副露
     CLOSED_TILES = EXPOSED + ExposedFeature.SIZE                    # 手牌の種類と枚数
+    # EFFECTIVE_TILES = CLOSED_TILES + TileKind.SIZE * 4            # シャンテン数が進む牌
     CLOSED_CHI = CLOSED_TILES + TileKind.SIZE * 4                   # 手牌にある順子
     CLOSED_OUTSIDE_WAIT = CLOSED_CHI + ChiKind.SIZE                 # 手牌にある塔子
     CLOSED_INSIDE_WAIT = CLOSED_OUTSIDE_WAIT + SerialPairKind.SIZE  # 手牌にある嵌張
@@ -129,8 +130,9 @@ class HandFeature:
         cls,
         v: FeatureVector,
         offset: int,
-        my_player: Player
+        board: Board
     ):
+        my_player = board.players[Relation.ME]
         my_hand = my_player.hand
         exist_tiles = [False for _ in range(TileKind.SIZE)]
 
@@ -147,6 +149,14 @@ class HandFeature:
             exist_tiles[kind] = True
             for i in range(cnt):
                 v.add(offset+cls.CLOSED_TILES+kind*4+i)
+        
+        # for effective_idx in board.effective_discard:
+        #     v.add(offset+cls.EFFECTIVE_TILES+effective_idx)
+        # print(my_hand, board.effective_discard)
+        # closed = [tile.tile_kind for tile in my_hand.closed]
+        # for k in board.effective_discard:
+        #     if k not in closed:
+        #         print(my_hand, board.effective_discard)
 
         # 順子と嵌張
         for tile_start, tile_end, chi_start in [(TileKind.M2, TileKind.M8, ChiKind.M123), (TileKind.P2, TileKind.P8, ChiKind.P123), (TileKind.S2, TileKind.S8, ChiKind.S123)]:
@@ -202,8 +212,111 @@ class RiverFeature:
         for kind in kinds:
             v.add(offset+cls.DISCARDED+kind)
 
+class ScoreDiffFeature:
+    PLUS_OVER_48000 = 0
+    PLUS_24000_47999 = 1
+    PLUS_12000_23999 = 2
+    PLUS_8000_11999 = 3
+    PLUS_4000_7999 = 4
+    PLUS_2000_3999 = 5
+    PLUS_1_1999 = 6
+    SAME = 7
+    MINUS_1_1999 = 8
+    MINUS_2000_3999 = 9
+    MINUS_4000_7999 = 10
+    MINUS_8000_11999 = 11
+    MINUS_12000_23999 = 12
+    MINUS_24000_47999 = 13
+    MINUS_OVER_48000 = 14
+    SIZE = 15
+
+    @classmethod
+    def add(
+        cls,
+        v: FeatureVector,
+        offset: int,
+        score_diff: int
+    ):
+        if 48000 <= score_diff:
+            v.add(offset+cls.PLUS_OVER_48000)
+        elif 24000 <= score_diff:
+            v.add(offset+cls.PLUS_24000_47999)
+        elif 12000 <= score_diff:
+            v.add(offset+cls.PLUS_12000_23999)
+        elif 8000 <= score_diff:
+            v.add(offset+cls.PLUS_8000_11999)
+        elif 4000 <= score_diff:
+            v.add(offset+cls.PLUS_4000_7999)
+        elif 2000 <= score_diff:
+            v.add(offset+cls.PLUS_2000_3999)
+        elif 1 <= score_diff:
+            v.add(offset+cls.PLUS_1_1999)
+        elif score_diff == 0:
+            v.add(offset+cls.SAME)
+        elif score_diff <= -1:
+            v.add(offset+cls.MINUS_1_1999)
+        elif score_diff <= -2000:
+            v.add(offset+cls.MINUS_2000_3999)
+        elif score_diff <= -4000:
+            v.add(offset+cls.MINUS_4000_7999)
+        elif score_diff <= -8000:
+            v.add(offset+cls.MINUS_8000_11999)
+        elif score_diff <= -12000:
+            v.add(offset+cls.MINUS_12000_23999)
+        elif score_diff <= -24000:
+            v.add(offset+cls.MINUS_24000_47999)
+        else:
+            v.add(offset+cls.MINUS_OVER_48000)
+        
+class ScoreFeature:
+    SCORE_OVER_69000 = 0
+    SCORE_53000_68999 = 1
+    SCORE_45000_52999 = 2
+    SCORE_37000_44999 = 3
+    SCORE_33000_36999 = 4
+    SCORE_29000_32999 = 5
+    SCORE_21000_28999 = 6
+    SCORE_17000_20999 = 7
+    SCORE_13000_16999 = 8
+    SCORE_5000_12999 = 9
+    SCORE_UNDER_4999 = 10
+    SIZE = 11
+
+    @classmethod
+    def add(
+        cls,
+        v: FeatureVector,
+        offset: int,
+        score: int
+    ):
+        if 69000 <= score:
+            v.add(offset+cls.SCORE_OVER_69000)
+        elif 53000 <= score:
+            v.add(offset+cls.SCORE_53000_68999)
+        elif 45000 <= score:
+            v.add(offset+cls.SCORE_45000_52999)
+        elif 37000 <= score:
+            v.add(offset+cls.SCORE_37000_44999)
+        elif 33000 <= score:
+            v.add(offset+cls.SCORE_33000_36999)
+        elif 29000 <= score:
+            v.add(offset+cls.SCORE_29000_32999)
+        elif 21000 <= score:
+            v.add(offset+cls.SCORE_21000_28999)
+        elif 17000 <= score:
+            v.add(offset+cls.SCORE_17000_20999)
+        elif 13000 <= score:
+            v.add(offset+cls.SCORE_13000_16999)
+        elif 5000 <= score:
+            v.add(offset+cls.SCORE_5000_12999)
+        elif 0 <= score:
+            v.add(offset+cls.SCORE_UNDER_4999)
+        else:
+            Exception("unexpected score")
+
 class MyPlayerFeature:
-    WIND = 0
+    SCORE = 0
+    WIND = SCORE + ScoreFeature.SIZE
     RIICHI = WIND + Wind.SIZE
     HAND = RIICHI + 1
     RIVER = HAND + HandFeature.SIZE
@@ -214,36 +327,49 @@ class MyPlayerFeature:
         cls,
         v: FeatureVector,
         offset: int,
-        player: Player
+        board: Board
     ):
+        player = board.players[Relation.ME]
+        ScoreFeature.add(v, offset+cls.SCORE, player.score)
         v.add(offset+cls.WIND+player.wind)
         if player.riichi:
             v.add(offset+cls.RIICHI)
-        HandFeature.add(v, cls.HAND, player)
+        HandFeature.add(v, cls.HAND, board)
         RiverFeature.add(v, offset+cls.RIVER, player.river)
 
 class OpponentPlayerFeature:
-    WIND = 0
+    SCORE = 0
+    SCORE_DIFF = SCORE + ScoreFeature.SIZE
+    WIND = SCORE_DIFF + ScoreDiffFeature.SIZE
     RIICHI = WIND + Wind.SIZE
     EXPOSED = RIICHI + 1
     RIVER = EXPOSED + ExposedFeature.SIZE
-    SIZE = RIVER + RiverFeature.SIZE
+    SAFE = RIVER + RiverFeature.SIZE
+    SIZE = SAFE + TileKind.SIZE
 
     @classmethod
     def add(
         cls,
         v: FeatureVector,
         offset: int,
-        player: Player
+        relation: int,
+        board: Board,
     ):
+        player = board.players[relation]
+        score = player.score
+        ScoreFeature.add(v, offset+cls.SCORE, score)
+        ScoreDiffFeature.add(v, offset+cls.SCORE_DIFF, score-board.players[Relation.ME].score)
         v.add(offset+cls.WIND+player.wind)
         if player.riichi:
             v.add(offset+cls.RIICHI)
         ExposedFeature.add(v, offset+cls.EXPOSED, player.hand)
         RiverFeature.add(v, offset+cls.RIVER, player.river)
+        for safe in player.safe:
+            v.add(offset+cls.SAFE+safe)
 
 class BoardFeature:
-    WIND = 0
+    KYOKU = 0
+    WIND = KYOKU + 8
     SHANTEN = WIND + Wind.SIZE
     PHASE = SHANTEN + ShantenFeature.SIZE
     MY_PLAYER = PHASE + PhaseFeature.SIZE
@@ -259,14 +385,141 @@ class BoardFeature:
     ):
         v = FeatureVector()
 
+        kyoku = min(board.kyoku, 7)
+        v.add(cls.KYOKU+kyoku)
         v.add(cls.WIND+board.wind)
         ShantenFeature.add(v, cls.SHANTEN, board.shanten)
         PhaseFeature.add(v, cls.PHASE, board.players[Relation.ME])
-        MyPlayerFeature.add(v, cls.MY_PLAYER, board.players[Relation.ME])
-        OpponentPlayerFeature.add(v, cls.SHIMO_PLAYER, board.players[Relation.SHIMO])
-        OpponentPlayerFeature.add(v, cls.TOIMEN_PLAYER, board.players[Relation.TOIMEN])
-        OpponentPlayerFeature.add(v, cls.KAMI_PLAYER, board.players[Relation.KAMI])
+        MyPlayerFeature.add(v, cls.MY_PLAYER, board)
+        OpponentPlayerFeature.add(v, cls.SHIMO_PLAYER, Relation.SHIMO, board)
+        OpponentPlayerFeature.add(v, cls.TOIMEN_PLAYER, Relation.TOIMEN, board)
+        OpponentPlayerFeature.add(v, cls.KAMI_PLAYER, Relation.KAMI, board)
 
+        return v
+
+class DiscardActionFeature:
+    EFFECTIVE_TILES = 0
+    DORA = EFFECTIVE_TILES + TileKind.SIZE
+    HAVE_RED = DORA + TileKind.SIZE
+    SIZE = HAVE_RED + 3
+
+    @classmethod
+    def make(
+        cls,
+        board: Board
+    ):
+        v = FeatureVector()
+
+        for effective_idx in board.effective_discard:
+            v.add(cls.EFFECTIVE_TILES+effective_idx)
+        for dora in board.doras:
+            v.add(cls.DORA+dora)
+        for tile in board.players[Relation.ME].hand.closed:
+            if tile.red:
+                if tile.tile_kind == TileKind.M5:
+                    v.add(cls.HAVE_RED+0)
+                elif tile.tile_kind == TileKind.P5:
+                    v.add(cls.HAVE_RED+1)
+                elif tile.tile_kind == TileKind.S5:
+                    v.add(cls.HAVE_RED+2)
+
+        return v
+
+class OptionalActionFeature:
+    ACTION_KIND = 0
+    MENZEN = ACTION_KIND + ActionKind.SIZE
+    CHI_KIND = MENZEN + 1
+    PON_KIND = CHI_KIND + ChiKind.SIZE * 3
+    KAN_OPEN_KIND = PON_KIND + TileKind.SIZE
+    KAN_CLOSE_KIND = KAN_OPEN_KIND + TileKind.SIZE
+    KAN_ADD_KIND = KAN_CLOSE_KIND + TileKind.SIZE
+    TSUMO_TILE = KAN_ADD_KIND + TileKind.SIZE
+    RON_TILE = TSUMO_TILE + TileKind.SIZE
+
+    # 他のアクションの情報（現状はNOに対して）
+    OTHER_ACTION_KINDS = RON_TILE + TileKind.SIZE
+    OTHER_CHI_KINDS = OTHER_ACTION_KINDS + ActionKind.SIZE      # 役がなくなる可能性がある鳴きに関する特徴
+    OTHER_PON_KAN_KINDS = OTHER_CHI_KINDS + ChiKind.SIZE        # 役がなくなる可能性がある鳴きに関する特徴
+
+    SIZE = OTHER_PON_KAN_KINDS + TileKind.SIZE
+
+    @classmethod
+    def chi_index(
+        cls,
+        chi: ChiKind,
+        steal: TileKind,
+    ):
+        # (chi, steal) = (M123,M1), (M123, M2), ..., (M789, M9), (P123, P1), ..., (S789, S9)
+        if ChiKind.M123 <= chi <= ChiKind.M789:
+            M_idx = chi - ChiKind.M123
+            diff = steal - TileKind.M2 - (chi - ChiKind.M123) + 1 # stealが順子の左なら0, 中央なら1, 右なら2
+            return ChiKind.SIZE*0 + M_idx*3 + diff
+        elif ChiKind.P123 <= chi <= ChiKind.P789:
+            P_idx = chi - ChiKind.P123
+            diff = steal - TileKind.P2 - (chi - ChiKind.P123) + 1
+            return ChiKind.SIZE*1 + P_idx*3 + diff
+        elif ChiKind.S123 <= chi <= ChiKind.S789:
+            S_idx = chi - ChiKind.S123
+            diff = steal - TileKind.S2 - (chi - ChiKind.S123) + 1
+            return ChiKind.SIZE*2 + S_idx*3 + diff
+        else:
+            raise Exception(f"unexpected chi kind: {chi}")
+
+    @classmethod
+    def make(
+        cls,
+        action: Action,
+        board: Board,
+        all_actions: list[Action]
+    ):
+        v = FeatureVector()
+
+        v.add(cls.ACTION_KIND+action.action_kind)
+
+        my_hand = board.players[Relation.ME].hand
+        menzen = True
+        for exposed in my_hand.exposed:
+            if exposed.exposed_kind != ExposedKind.KAN_CLOSE:
+                menzen = False
+        if menzen:
+            v.add(cls.MENZEN)
+
+        match action.action_kind:
+            case ActionKind.DISCARD:
+                Exception("Unexpected ActionKind(DISCARD)")
+
+            case ActionKind.CHI:
+                chi_index = cls.chi_index(action.chi_kind, action.steal_tile.tile_kind)
+                v.add(cls.CHI_KIND+chi_index)
+            case ActionKind.PON:
+                v.add(cls.PON_KIND+action.pon_kind)
+            case ActionKind.KAN_OPEN:
+                v.add(cls.KAN_OPEN_KIND+action.kan_kind)
+            case ActionKind.KAN_CLOSE:
+                v.add(cls.KAN_CLOSE_KIND+action.kan_kind)
+            case ActionKind.KAN_ADD:
+                v.add(cls.KAN_ADD_KIND+action.kan_kind)
+            case ActionKind.TSUMO:
+                v.add(cls.TSUMO_TILE+action.tsumo_tile.tile_kind)
+            case ActionKind.RON:
+                v.add(cls.RON_TILE+action.ron_tile.tile_kind)
+            case ActionKind.RIICHI:
+                pass
+            case ActionKind.DRAW:
+                pass
+            case ActionKind.NO:
+                # 他のアクションの情報を入れる
+                for other in all_actions:
+                    if other.action_kind == ActionKind.NO:
+                        continue
+                    v.add(cls.OTHER_ACTION_KINDS+other.action_kind)
+                    match other.action_kind:
+                        case ActionKind.CHI:
+                            v.add(cls.OTHER_CHI_KINDS+other.chi_kind)
+                        case ActionKind.PON:
+                            v.add(cls.OTHER_PON_KAN_KINDS+other.pon_kind)
+                        case ActionKind.KAN_OPEN | ActionKind.KAN_ADD:
+                            v.add(cls.OTHER_PON_KAN_KINDS+other.kan_kind)
         return v
 
 class ActionFeature:

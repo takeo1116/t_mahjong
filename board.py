@@ -580,12 +580,15 @@ class Player:
 class Board:
     def __init__(
         self,
-        wind: Wind,
+        kyoku: int,
+        doras: list[TileKind],
         shanten: int,
         players: list[Player],
         effective_discard: list[TileKind]
     ):
-        self.wind = wind
+        self.kyoku = kyoku
+        self.wind = Wind(kyoku % 4)
+        self.doras = doras
         self.shanten = shanten
         self.players = players
         self.effective_discard = effective_discard
@@ -593,22 +596,25 @@ class Board:
     @classmethod
     def from_mjx(
         cls,
-        observation # MjxObservation
+        observation, # MjxObservation
     ):
-        field_wind = Wind(observation.round() % 4)
+        kyoku = observation.round()
+        # field_wind = Wind(kyoku % 4)
         my_wind = Wind(observation.who())
 
         mjx_hand = observation.curr_hand()
         my_hand = Hand.from_mjx(mjx_hand)
         shanten = mjx_hand.shanten_number()
 
+        doras = [TileKind.from_mjx(dora) for dora in observation.doras()]   # 表示牌ではなくドラそのもの
+
         effective_discard = [TileKind.from_mjx(entry) for entry in mjx_hand.effective_discard_types()]
 
         riichi = [False, False, False, False]
         exposes = [[], [], [], []]
 
-        discarded = [[] for _ in range(4)]  # そのプレイヤーが捨てた牌
-        safe = [set() for _ in range(4)]       # そのプレイヤーが捨てた牌＋同順内フリテン＋そのプレイヤーのリーチ後に誰かが捨てた牌
+        discarded = [[] for _ in range(4)]      # そのプレイヤーが捨てた牌
+        safe = [set() for _ in range(4)]        # そのプレイヤーが捨てた牌＋同順内フリテン＋そのプレイヤーのリーチ後に誰かが捨てた牌
 
         events = observation.events()
         for event in events:
@@ -655,7 +661,8 @@ class Board:
             Relation.TOIMEN: Player(relation=Relation.TOIMEN, wind=my_wind.toimen(), score=scores[my_wind.toimen()], riichi=riichi[Relation.TOIMEN], hand=hands[Relation.TOIMEN], river=rivers[Relation.TOIMEN], safe=safe[Relation.TOIMEN]),
             Relation.KAMI: Player(relation=Relation.KAMI, wind=my_wind.kami(), score=scores[my_wind.kami()], riichi=riichi[Relation.KAMI], hand=hands[Relation.KAMI], river=rivers[Relation.KAMI], safe=safe[Relation.KAMI]),
         }
-        return cls(field_wind, shanten, players, effective_discard)
+
+        return cls(kyoku, doras, shanten, players, effective_discard)
 
 class Action:
     def __init__(self):
@@ -705,6 +712,15 @@ class Action:
             return "SIZE(error)"
         else:
             return "unknown action"
+    
+    @classmethod
+    def no(
+        cls
+    ):
+        # 内部用
+        instance = cls()
+        instance.action_kind = ActionKind.NO
+        return instance
     
     @classmethod
     def from_mjx(
@@ -783,17 +799,16 @@ class Action:
             instance.steal_tile = steal
             instance.expose_tile = expose
             instance.kan_kind = steal.tile_kind
-            
-            exp_num = len(expose)
-            # relation = Relation(kan.steal_from())
-            # hand_num = len(board.players[Relation.ME].hand.closed) % 3
-            # print(f"steal: {steal}, expose: {expose}, hand_num: {hand_num}, relation: {relation.name}")
-            if exp_num == 3:
-                instance.action_kind = ActionKind.KAN_OPEN
-            elif exp_num == 4:
-                instance.action_kind = ActionKind.KAN_CLOSE
-            elif exp_num == 1:  # TODO: これ違ってて、大明槓と加槓は両方とも(steal, exp)の形が同じ（1, 3の形）
+
+            in_hand = len([t for t in board.players[Relation.ME].hand.closed if t.tile_kind == steal.tile_kind])
+            if in_hand == 1:
                 instance.action_kind = ActionKind.KAN_ADD
+            elif in_hand == 3:
+                instance.action_kind = ActionKind.KAN_OPEN
+            elif in_hand == 4:
+                instance.action_kind = ActionKind.KAN_CLOSE
+            else:
+                raise Exception(f"unexpected KAN in_hand: {in_hand}")
         elif action_id == 175:  # ツモ
             instance.action_kind = ActionKind.TSUMO
             instance.tsumo_tile = Tile.from_mjx(action.tile())
