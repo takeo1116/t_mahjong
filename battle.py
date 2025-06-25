@@ -10,9 +10,12 @@ from mjx.agents import Agent as MjxAgent
 
 from model.simple_mlp_model import SimpleMlpModel
 from model.split_mlp_model import SplitMlpModel
+from model.simple_cnn_model import SimpleCnnModel
 from feature.feature_vector import BoardFeature, ActionFeature, DiscardActionFeature, OptionalActionFeature
+from feature.cnn_feature import CnnBoardFeatures
 from actor.simple_mlp_actor import SimpleMlpActor, SimpleMlpMenzenActor, SimpleMlpShantenActor
 from actor.split_mlp_actor import SplitMlpActor, SplitMlpMenzenActor, SplitMlpShantenActor
+from actor.simple_cnn_actor import SimpleCnnActor, SimpleCnnMenzenActor, SimpleCnnShantenActor
 from learn import SimpleMlpLearner, SplitMlpLearner
 
 class SingleGame:
@@ -160,18 +163,26 @@ def battle_SplitMlp(
     learn_dir = "./learn"
 
     model = SplitMlpModel(BoardFeature.SIZE, DiscardActionFeature.SIZE, OptionalActionFeature.SIZE)
+    simple = SimpleMlpModel(BoardFeature.SIZE, ActionFeature.SIZE)
+    simple.load_state_dict(torch.load("./learn_simple/model_134415000.pth", map_location=torch.device("cpu"), weights_only=False))
     model_path = None
 
     # epsilon = 0.15
-    epsilon = 0.05
+    epsilon = 0.0008
 
     agents = None
     if log_time is not None:    # log
+        # agents = [
+        #     SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
+        #     SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
+        #     SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
+        #     SplitMlpShantenActor(model),
+        # ]
         agents = [
             SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
             SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
             SplitMlpActor(model, discard_softmax=False, optional_epsilon=0.0),
-            SplitMlpShantenActor(model),
+            SimpleMlpActor(simple, epsilon=0.0),
         ]
     else:                       # 自己対戦
         if rule_index == 0:
@@ -198,9 +209,10 @@ def battle_SplitMlp(
 
         for _ in range(10):
             game.run()
-        
-        for player_id in range(4):
-            agents[player_id].export(os.path.join(learn_dir, f"learndata"), SplitMlpLearner.FILE_SIZE, SplitMlpLearner.BIN_NUM)
+
+        if log_time is None:
+            for player_id in range(4):
+                agents[player_id].export(os.path.join(learn_dir, f"learndata"), SplitMlpLearner.FILE_SIZE, SplitMlpLearner.BIN_NUM)
         if log_time != None:
             log_dict = {"time": time.time() - game.start_time + log_time, "scores": [agent.get_score() for agent in agents], "ranks": [agent.get_rank() for agent in agents], "epsilon": epsilon}
             print(log_dict, flush=True)
@@ -210,13 +222,71 @@ def battle_SplitMlp(
             for agent in agents:
                 agent.set_random_parameter(discard_softmax=None, optional_epsilon=epsilon)
 
+def battle_SimpleCnn(
+    rule_index: int = 0,
+    log_time: float = 0.0
+):
+    learn_dir = "./learn"
+
+    model = SimpleCnnModel(BoardFeature.SIZE, CnnBoardFeatures.CHANNEL, ActionFeature.SIZE)
+    model_path = None
+
+    # epsilon = 0.15
+    epsilon = 0.05
+
+    agents = None
+    if log_time is not None:    # log
+        agents = [
+            SimpleCnnActor(model, epsilon=0.0),
+            SimpleCnnActor(model, epsilon=0.0),
+            SimpleCnnActor(model, epsilon=0.0),
+            SimpleCnnShantenActor(model),
+        ]
+    else:                       # 自己対戦
+        if rule_index == 0:
+            agents = [
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnShantenActor(model)
+            ]
+        elif rule_index == 1:
+            agents = [
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnActor(model, epsilon=epsilon),
+                SimpleCnnMenzenActor(model)
+            ]
+    
+    game = SingleGame(agents)
+    cnt = 0
+    while True:
+        with open(os.path.join(learn_dir, f"modelpath.txt"), mode="r") as f:
+            model_path = f.readline()
+        model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"), weights_only=False))
+
+        for _ in range(10):
+            game.run()
+        
+        for player_id in range(4):
+            agents[player_id].export(os.path.join(learn_dir, f"learndata"), SimpleMlpLearner.FILE_SIZE, SimpleMlpLearner.BIN_NUM)
+        if log_time != None:
+            log_dict = {"time": time.time() - game.start_time + log_time, "scores": [agent.get_score() for agent in agents], "ranks": [agent.get_rank() for agent in agents], "epsilon": epsilon}
+            print(log_dict, flush=True)
+
+        epsilon *= 0.998
+        if log_time is None:
+            for agent in agents:
+                agent.set_random_parameter(epsilon=epsilon)
+
 def main():
     torch.set_num_threads(1)
     num_subprocess = 9  # ログを表示しないプロセスの数
     temperature = 1.0
 
-    battle = battle_SimpleMlp
+    # battle = battle_SimpleMlp
     # battle = battle_SplitMlp
+    battle = battle_SimpleCnn
     
     log_time = 0.0
     main_process = multiprocessing.Process(target=battle, args=(0, log_time))

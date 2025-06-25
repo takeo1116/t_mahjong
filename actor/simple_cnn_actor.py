@@ -16,12 +16,13 @@ from mjx.agents import ShantenAgent as MjxShantenAgent
 
 from board import Board, Action, ActionKind, TileKind, Tile, Relation
 from feature.feature_vector import FeatureVector, BoardFeature, ActionFeature
-from model.simple_mlp_model import SimpleMlpModel
+from feature.cnn_feature import CnnBoardFeatures
+from model.simple_cnn_model import SimpleCnnModel
 
 class TrainingData:
     def __init__(
         self,
-        board_vector: FeatureVector,
+        board_features: CnnBoardFeatures,
         action_vector: FeatureVector,
         value_inferred: float,
         value_label: float = None,
@@ -32,7 +33,7 @@ class TrainingData:
         game_reward: float = None,
         round_final: bool = False,
     ):
-        self.board_vector = board_vector
+        self.board_features = board_features
         self.action_vector = action_vector
         self.value_inferred = value_inferred
         self.value_label = value_label
@@ -80,12 +81,18 @@ class Dataset:
     def make_inputs(self):
         board_indexes, board_offsets = [], []
         action_indexes, action_offsets = [], []
+        board_pictures = []
         for entry in self.data:
+            board_vector, board_picture = entry.board_features.vec, entry.board_features.pic
+
             board_offsets.append(len(board_indexes))
             action_offsets.append(len(action_indexes))
-            board_indexes += entry.board_vector.get_indexes()
+            board_indexes += board_vector.get_indexes()
             action_indexes += entry.action_vector.get_indexes()
-        return board_indexes, board_offsets, action_indexes, action_offsets
+
+            board_pictures.append(board_picture)
+        board_pictues = np.stack(board_pictures, axis=0)
+        return board_indexes, board_offsets, board_pictues, action_indexes, action_offsets
 
     def make_labels(self):
         value_labels, yaku_labels, policy_labels, score_labels = [], [], [], []
@@ -221,7 +228,7 @@ class Inferred:
     def __init__(
         self,
         board: Board,
-        board_vector: FeatureVector,
+        board_features: CnnBoardFeatures,
         mjx_action: MjxAction,
         action_vector: FeatureVector,
         value: float,
@@ -231,7 +238,7 @@ class Inferred:
         if len(yaku) != 3:
             raise Exception("unexpected length of list")
         self.board = board
-        self.board_vector = board_vector
+        self.board_features = board_features
         self.value = value
         self.yaku = yaku
         self.mjx_action = mjx_action
@@ -256,7 +263,7 @@ class Trainer:
         self,
         inferred: Inferred
     ):
-        training_data = TrainingData(inferred.board_vector, inferred.action_vector, inferred.value)
+        training_data = TrainingData(inferred.board_features, inferred.action_vector, inferred.value)
         self.current_episode.add(training_data)
 
     def end_round(
@@ -334,12 +341,12 @@ class Evaluator:
             return 0.0, 0.0
         return self.score_sum / len(self.games), self.rank_sum / len(self.games)
 
-class SimpleMlpActor(MjxAgent):
+class SimpleCnnActor(MjxAgent):
     LOG_FILE = None
 
     def __init__(
         self,
-        model:SimpleMlpModel,
+        model: SimpleCnnModel,
         epsilon: float = 0.0   # ランダムに選択する確率
         ) -> None:
         super().__init__()
@@ -397,10 +404,12 @@ class SimpleMlpActor(MjxAgent):
         board_indexes, board_offsets = [], []
         action_indexes, action_offsets = [], []
         board_vectors, action_vectors = [], []
+        board_pictures = []
 
         board = Board.from_mjx(observation)
         for action in observation.legal_actions():
-            board_vector = BoardFeature.make(board)
+            board_features = CnnBoardFeatures.make(board)
+            board_vector, board_picture = board_features.vec, board_features.pic
             action_vector = ActionFeature.make(Action.from_mjx(action, board), board)
 
             board_offsets.append(len(board_indexes))
@@ -409,15 +418,19 @@ class SimpleMlpActor(MjxAgent):
             action_indexes += action_vector.get_indexes()
             board_vectors.append(board_vector)
             action_vectors.append(action_vector)
+            board_pictures.append(board_picture)
 
         board_indexes = torch.LongTensor(board_indexes)
         board_offsets = torch.LongTensor(board_offsets)
         action_indexes = torch.LongTensor(action_indexes)
         action_offsets = torch.LongTensor(action_offsets)
 
-        value, yaku, policy, score = self.model(board_indexes, board_offsets, action_indexes, action_offsets)
+        board_pictures = torch.from_numpy(np.stack(board_pictures, axis=0))
 
-        inferred = [Inferred(board, board_vector, mjx_action, action_vector, v[0], y, p[0]) for mjx_action, action_vector, v, y, p in zip(legal_actions, action_vectors, value.tolist(), yaku.tolist(), policy.tolist(), strict=True)]
+        value, yaku, policy, score = self.model(board_indexes, board_offsets, board_pictures, action_indexes, action_offsets)
+
+        board_features = CnnBoardFeatures.make(board)
+        inferred = [Inferred(board, board_features, mjx_action, action_vector, v[0], y, p[0]) for mjx_action, action_vector, v, y, p in zip(legal_actions, action_vectors, value.tolist(), yaku.tolist(), policy.tolist(), strict=True)]
         return inferred
 
     def _inner_act(
@@ -473,10 +486,10 @@ class SimpleMlpActor(MjxAgent):
         _, rank = self.evaluator.get_moving_average()
         return rank
 
-class SimpleMlpMenzenActor(SimpleMlpActor):
+class SimpleCnnMenzenActor(SimpleCnnActor):
     def __init__(
         self,
-        model: SimpleMlpModel
+        model: SimpleCnnModel
         ) -> None:
         super().__init__(model)
     
@@ -522,10 +535,10 @@ class SimpleMlpMenzenActor(SimpleMlpActor):
 
         raise Exception("selected action not found")
 
-class SimpleMlpShantenActor(SimpleMlpMenzenActor):
+class SimpleCnnShantenActor(SimpleCnnMenzenActor):
     def __init__(
         self,
-        model: SimpleMlpModel
+        model: SimpleCnnModel
     ) -> None:
         super().__init__(model)
         self.shanten_agent = MjxShantenAgent()
