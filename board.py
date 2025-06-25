@@ -473,8 +473,12 @@ class Hand:
         exposed: list[Exposed],
         num: int = 13
     ):
+        # 加槓のときポンとカンが重複するので取り除く処理をする
+        kan_kinds = [ex.kan_kind for ex in exposed if ex.exposed_kind == ExposedKind.KAN_OPEN]
+        exposed_new = [ex for ex in exposed if not (ex.exposed_kind == ExposedKind.PON and ex.pon_kind in kan_kinds)]
+
         closed = [Tile(TileKind.UNKNOWN, red=False) for _ in range(num - len(exposed) * 3)]
-        return cls(closed, exposed)
+        return cls(closed, exposed_new)
     
     @classmethod
     def from_mjx(
@@ -483,16 +487,46 @@ class Hand:
     ):
         closed = [Tile.from_mjx(tile) for tile in hand.closed_tiles()]
         exposed = [Exposed.from_mjx(open) for open in hand.opens()]
-        
-        return cls(closed, exposed)
+
+        # 加槓のときポンとカンが重複するので取り除く処理をする
+        kan_kinds = [ex.kan_kind for ex in exposed if ex.exposed_kind == ExposedKind.KAN_OPEN]
+        exposed_new = [ex for ex in exposed if not (ex.exposed_kind == ExposedKind.PON and ex.pon_kind in kan_kinds)]
+        return cls(closed, exposed_new)
 
     def to_34_array(
         self
     ):
-        # シャンテン数ライブラリ用なのでclosedのみ
+        raise NotImplementedError()
+
+    def to_34_array_closed(
+        self
+    ):
+        # closedのみ
         arr = [0 for _ in range(34)]
         for tile in self.closed:
             arr[tile.tile_kind] += 1
+        return arr
+
+    def to_34_array_exposed(
+        self
+    ):
+        # exposedのみ
+        arr = [0 for _ in range(34)]
+        for ex in self.exposed:
+            for kind in ex.get_tilekinds():
+                arr[kind] += 1
+        return arr
+
+    def to_34_array_full(
+        self
+    ):
+        # closed + exposed
+        arr = [0 for _ in range(34)]
+        for tile in self.closed:
+            arr[tile.tile_kind] += 1
+        for ex in self.exposed:
+            for kind in ex.get_tilekinds():
+                arr[kind] += 1
         return arr
 
     def __repr__(self):
@@ -542,6 +576,12 @@ class River:
         tiles: list[Tile],
     ):
         self.tiles = tiles
+
+    def to_34_array(self):
+        arr = [0 for _ in range(34)]
+        for tile in self.tiles:
+            arr[tile.tile_kind] += 1
+        return arr
 
     def __len__(self):
         return len(self.tiles)
