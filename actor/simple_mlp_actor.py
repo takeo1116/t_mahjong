@@ -276,7 +276,7 @@ class Trainer:
         self.episodes.append(self.current_episode)
         self.current_episode = Episode()
 
-    def export(
+    def export_all(
         self,
         dir_path: str,
         file_size: int,
@@ -295,6 +295,32 @@ class Trainer:
             idx += file_size
             self.bin_idx = (self.bin_idx + 1) % bin_num
         self.extra_data = Dataset(alldata[idx:])
+        self.episodes = []
+    
+    def export(
+        self,
+        dir_path: str,
+        file_size: int,
+        bin_num: int
+    ):
+        stride = 10
+
+        alldata = sum([episode.get_data() for episode in self.episodes], [])
+        alldata += self.extra_data.get_data()
+        random.shuffle(alldata)
+
+        idx, size = 0, len(alldata)
+        print(len(alldata))
+        while size - idx >= file_size*stride:
+            r = random.getrandbits(64)
+            dataset = Dataset(alldata[idx:idx+file_size*stride:stride])
+            print(len(dataset))
+            with open(os.path.join(dir_path, f"bin_{self.bin_idx}/data_{r}.pkl"), "wb") as f:
+                pickle.dump(dataset, f)
+            idx += file_size*stride
+            self.bin_idx = (self.bin_idx + 1) % bin_num
+        self.extra_data = Dataset(alldata[idx:])
+        print(f"ex: {len(self.extra_data)}")
         self.episodes = []
         
     def reset(self):

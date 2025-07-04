@@ -558,9 +558,9 @@ class SimpleCnnLearner(LearnerBase):
             time.sleep(20)
         
 def main():
-    # learner = SimpleMlpLearner(model_path=None, device="cuda:0", learn_dir="./learn")
+    learner = SimpleMlpLearner(model_path=None, device="cuda:0", learn_dir="./learn")
     # learner = SplitMlpLearner(model_path=None, device="cuda:0", learn_dir="./learn")
-    learner = SimpleCnnLearner(model_path=None, device="cuda:0", learn_dir="./learn")
+    # learner = SimpleCnnLearner(model_path=None, device="cuda:0", learn_dir="./learn")
 
     learner.learn()
 

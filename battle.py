@@ -16,7 +16,7 @@ from feature.cnn_feature import CnnBoardFeatures
 from actor.simple_mlp_actor import SimpleMlpActor, SimpleMlpMenzenActor, SimpleMlpShantenActor
 from actor.split_mlp_actor import SplitMlpActor, SplitMlpMenzenActor, SplitMlpShantenActor
 from actor.simple_cnn_actor import SimpleCnnActor, SimpleCnnMenzenActor, SimpleCnnShantenActor
-from learn import SimpleMlpLearner, SplitMlpLearner
+from learn import SimpleMlpLearner, SplitMlpLearner, SimpleCnnLearner
 
 class SingleGame:
     def __init__(
@@ -269,7 +269,7 @@ def battle_SimpleCnn(
             game.run()
         
         for player_id in range(4):
-            agents[player_id].export(os.path.join(learn_dir, f"learndata"), SimpleMlpLearner.FILE_SIZE, SimpleMlpLearner.BIN_NUM)
+            agents[player_id].export(os.path.join(learn_dir, f"learndata"), SimpleCnnLearner.FILE_SIZE, SimpleCnnLearner.BIN_NUM)
         if log_time != None:
             log_dict = {"time": time.time() - game.start_time + log_time, "scores": [agent.get_score() for agent in agents], "ranks": [agent.get_rank() for agent in agents], "epsilon": epsilon}
             print(log_dict, flush=True)
@@ -284,9 +284,9 @@ def main():
     num_subprocess = 9  # ログを表示しないプロセスの数
     temperature = 1.0
 
-    # battle = battle_SimpleMlp
+    battle = battle_SimpleMlp
     # battle = battle_SplitMlp
-    battle = battle_SimpleCnn
+    # battle = battle_SimpleCnn
     
     log_time = 0.0
     main_process = multiprocessing.Process(target=battle, args=(0, log_time))

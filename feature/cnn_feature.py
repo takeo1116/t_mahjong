@@ -140,3 +140,35 @@ class CnnBoardFeatures:
         vec = CnnBoardFeature.make(board)
 
         return cls(pic, vec)
+
+class CnnDiscardFeature:
+    KYOKU = 0
+    WIND = KYOKU + 8
+    SHANTEN = WIND + Wind.SIZE
+    PHASE = SHANTEN + ShantenFeature.SIZE
+    MY_PLAYER = PHASE + PhaseFeature.SIZE
+    SHIMO_PLAYER = MY_PLAYER + CnnMyPlayerFeature.SIZE
+    TOIMEN_PLAYER = SHIMO_PLAYER + CnnOpponentPlayerFeature.SIZE
+    KAMI_PLAYER = TOIMEN_PLAYER + CnnOpponentPlayerFeature.SIZE
+
+    SIZE = KAMI_PLAYER + CnnOpponentPlayerFeature.SIZE
+
+    @classmethod
+    def make(
+        cls,
+        board: Board
+    ):
+        pass
+
+class CnnDiscardFeatures(CnnBoardFeatures):
+    CHANNEL = 13
+
+    @classmethod
+    def make(
+        cls,
+        board: Board
+    ):
+        pic = cls.make_pic_np(board)
+        vec = CnnDiscardFeature.make(board)
+
+        return cls(pic, vec)
